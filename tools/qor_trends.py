@@ -9,13 +9,16 @@ Usage:
     python3 tools/qor_trends.py --design <name> [options]
 
 Options:
-    --design  NAME      Design name to filter (required)
-    --domain  DOMAIN    Limit to one domain (default: all domains)
-    --metric  FIELD     Specific metric field to plot (default: all numeric)
-    --plot              Emit a matplotlib chart (requires matplotlib)
-    --output  FILE      Save chart to FILE instead of displaying (implies --plot)
-    --memory-root PATH  Path to the memory/ directory (default: auto-detect)
-    --min-runs N        Minimum runs required to include a domain (default: 2)
+    --design  NAME                  Design name to filter (required)
+    --domain  DOMAIN                Limit to one domain (default: all domains)
+    --metric  FIELD                 Specific metric field to plot (default: all numeric)
+    --pdk     VALUE                 Filter to records with matching pdk (case-insensitive)
+    --tool    VALUE                 Filter to records with matching tool_used (case-insensitive)
+    --group-by {pdk,tool,pdk+tool}  Group series by dimension for side-by-side comparison
+    --plot                          Emit a matplotlib chart (requires matplotlib)
+    --output  FILE                  Save chart to FILE instead of displaying (implies --plot)
+    --memory-root PATH              Path to the memory/ directory (default: auto-detect)
+    --min-runs N                    Minimum runs required to include a series (default: 2)
 
 Examples:
     # Print trend table for all domains where design "aes_core" appears
@@ -27,6 +30,12 @@ Examples:
     # Save a chart of all metrics to a file
     python3 tools/qor_trends.py --design aes_core --plot --output aes_core_qor.png
 
+    # Compare area/timing across sky130 vs gf180mcu
+    python3 tools/qor_trends.py --design aes_core --domain synthesis --group-by pdk
+
+    # Compare Yosys vs DC on sky130, with a grouped chart
+    python3 tools/qor_trends.py --design aes_core --pdk sky130 --group-by tool --plot
+
 Exit codes:
     0  — table/chart produced
     1  — no matching runs found for the given design
@@ -37,11 +46,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
 VALID_DOMAINS = [
     "architecture",
@@ -58,6 +65,11 @@ VALID_DOMAINS = [
     "synthesis",
     "verification",
 ]
+
+VALID_GROUP_BY = ["pdk", "tool", "pdk+tool"]
+
+# Sentinel used when --group-by is not set (legacy single-series mode)
+_ALL_KEY = "__all__"
 
 # Numeric metric fields per domain
 NUMERIC_METRICS: dict[str, list[str]] = {
@@ -134,33 +146,68 @@ def filter_by_design(records: list[dict], design_name: str) -> list[dict]:
     ]
 
 
+def filter_by_pdk(records: list[dict], pdk: str) -> list[dict]:
+    pdk_lower = pdk.lower()
+    return [
+        r for r in records
+        if isinstance(r.get("pdk"), str) and r["pdk"].lower() == pdk_lower
+    ]
+
+
+def filter_by_tool(records: list[dict], tool: str) -> list[dict]:
+    tool_lower = tool.lower()
+    return [
+        r for r in records
+        if isinstance(r.get("tool_used"), str) and r["tool_used"].lower() == tool_lower
+    ]
+
+
+def _group_key_for(rec: dict, group_by: str | None) -> str:
+    """Return the group label for a record given the active grouping dimension."""
+    if not group_by:
+        return _ALL_KEY
+    if group_by == "pdk":
+        return rec.get("pdk") or "(none)"
+    if group_by == "tool":
+        return rec.get("tool_used") or "(none)"
+    # pdk+tool
+    pdk = rec.get("pdk") or "(none)"
+    tool = rec.get("tool_used") or "(none)"
+    return f"{pdk}|{tool}"
+
+
+# metric → group_key → [(timestamp, value), ...]
+SeriesMap = dict[str, dict[str, list[tuple[str, float]]]]
+
+
 def extract_series(
     records: list[dict],
     domain: str,
     metric_filter: str | None,
-) -> dict[str, list[tuple[str, float]]]:
+    group_by: str | None,
+) -> SeriesMap:
     """
-    Returns { metric_field: [(timestamp, value), ...] } sorted by timestamp.
-    Only includes numeric values. Optionally filtered to a single metric.
+    Returns {metric: {group_key: [(ts, value), ...]}} sorted by timestamp.
+    When group_by is None, a single _ALL_KEY group is used (legacy flat behaviour).
     """
     fields = NUMERIC_METRICS.get(domain, [])
     if metric_filter:
         fields = [f for f in fields if f == metric_filter]
 
-    series: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    series: dict[str, dict[str, list[tuple[str, float]]]] = defaultdict(lambda: defaultdict(list))
     for rec in records:
         ts = rec.get("timestamp", "")
         km = rec.get("key_metrics") or {}
+        gk = _group_key_for(rec, group_by)
         for field in fields:
             val = km.get(field)
             if isinstance(val, (int, float)):
-                series[field].append((ts, float(val)))
+                series[field][gk].append((ts, float(val)))
 
-    # Sort each series chronologically
-    for field in series:
-        series[field].sort(key=lambda x: x[0])
-
-    return dict(series)
+    result: SeriesMap = {}
+    for field, groups in series.items():
+        result[field] = {gk: sorted(pts, key=lambda x: x[0]) for gk, pts in groups.items()}
+    return result
 
 
 def detect_regression(field: str, values: list[float]) -> str | None:
@@ -182,44 +229,78 @@ def detect_regression(field: str, values: list[float]) -> str | None:
 
 def print_table(
     design: str,
-    domain_series: dict[str, dict[str, list[tuple[str, float]]]],
+    domain_series: dict[str, SeriesMap],
     min_runs: int,
+    group_by: str | None,
 ) -> int:
     """Print the QoR trend table. Returns number of rows printed."""
     rows = 0
     for domain, series in sorted(domain_series.items()):
         if not series:
             continue
-        # Count distinct runs for this domain/design
-        run_count = max(len(pts) for pts in series.values()) if series else 0
-        if run_count < min_runs:
-            continue
+
+        run_count = max(
+            len(pts)
+            for groups in series.values()
+            for pts in groups.values()
+        ) if series else 0
+
+        if group_by:
+            any_qualifies = any(
+                len(pts) >= min_runs
+                for groups in series.values()
+                for pts in groups.values()
+            )
+            if not any_qualifies:
+                continue
+        else:
+            if run_count < min_runs:
+                continue
 
         print(f"\n{'='*72}")
         print(f"Domain: {domain}  |  Design: {design}  |  Runs: {run_count}")
         print(f"{'='*72}")
-        print(f"  {'Metric':<35} {'Min':>10} {'Max':>10} {'Latest':>10}  Alert")
-        print(f"  {'-'*35} {'-'*10} {'-'*10} {'-'*10}  -----")
 
-        for field, points in sorted(series.items()):
-            values = [v for _, v in points]
-            if not values:
-                continue
-            alert = detect_regression(field, values) or ""
-            print(
-                f"  {field:<35} {min(values):>10.4g} {max(values):>10.4g} "
-                f"{values[-1]:>10.4g}  {alert}"
-            )
-            rows += 1
+        if group_by:
+            print(f"  {'Group':<20} {'Metric':<28} {'Min':>8} {'Max':>8} {'Latest':>8}  Alert")
+            print(f"  {'-'*20} {'-'*28} {'-'*8} {'-'*8} {'-'*8}  -----")
+            for field, groups in sorted(series.items()):
+                for gk, points in sorted(groups.items()):
+                    if len(points) < min_runs:
+                        continue
+                    values = [v for _, v in points]
+                    if not values:
+                        continue
+                    alert = detect_regression(field, values) or ""
+                    print(
+                        f"  {gk:<20} {field:<28} {min(values):>8.4g} {max(values):>8.4g} "
+                        f"{values[-1]:>8.4g}  {alert}"
+                    )
+                    rows += 1
+        else:
+            print(f"  {'Metric':<35} {'Min':>10} {'Max':>10} {'Latest':>10}  Alert")
+            print(f"  {'-'*35} {'-'*10} {'-'*10} {'-'*10}  -----")
+            for field, groups in sorted(series.items()):
+                points = groups.get(_ALL_KEY, [])
+                values = [v for _, v in points]
+                if not values:
+                    continue
+                alert = detect_regression(field, values) or ""
+                print(
+                    f"  {field:<35} {min(values):>10.4g} {max(values):>10.4g} "
+                    f"{values[-1]:>10.4g}  {alert}"
+                )
+                rows += 1
 
     return rows
 
 
 def plot_chart(
     design: str,
-    domain_series: dict[str, dict[str, list[tuple[str, float]]]],
+    domain_series: dict[str, SeriesMap],
     min_runs: int,
     output_file: str | None,
+    group_by: str | None,
 ) -> None:
     try:
         import matplotlib.pyplot as plt
@@ -232,44 +313,65 @@ def plot_chart(
         )
         sys.exit(2)
 
-    # Collect all (domain, field, points) with enough data
-    plots = []
+    # Collect all (domain, field, qualifying_groups) with enough data
+    plots: list[tuple[str, str, dict[str, list[tuple[str, float]]]]] = []
     for domain, series in sorted(domain_series.items()):
-        for field, points in sorted(series.items()):
-            if len(points) >= min_runs:
-                plots.append((domain, field, points))
+        for field, groups in sorted(series.items()):
+            qualifying = {gk: pts for gk, pts in groups.items() if len(pts) >= min_runs}
+            if qualifying:
+                plots.append((domain, field, qualifying))
 
     if not plots:
         print("[warn] No series with enough runs to plot.", file=sys.stderr)
         return
+
+    colors = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    ]
 
     ncols = 2
     nrows = (len(plots) + 1) // ncols
     fig, axes = plt.subplots(nrows, ncols, figsize=(14, 4 * nrows), squeeze=False)
     fig.suptitle(f"QoR Trends — Design: {design}", fontsize=14, fontweight="bold")
 
-    for idx, (domain, field, points) in enumerate(plots):
+    for idx, (domain, field, groups) in enumerate(plots):
         ax = axes[idx // ncols][idx % ncols]
-        xs = list(range(1, len(points) + 1))
-        ys = [v for _, v in points]
-        labels = [ts[:10] if ts else str(i) for i, (ts, _) in enumerate(points, 1)]
+        has_regression = False
+        all_group_keys = sorted(groups.keys())
 
-        ax.plot(xs, ys, marker="o", linewidth=1.5)
-        ax.set_title(f"{domain} / {field}", fontsize=9)
+        for g_idx, gk in enumerate(all_group_keys):
+            points = groups[gk]
+            xs = list(range(1, len(points) + 1))
+            ys = [v for _, v in points]
+            color = colors[g_idx % len(colors)]
+            label = gk if group_by else None
+            ax.plot(xs, ys, marker="o", linewidth=1.5, color=color, label=label)
+
+            if len(ys) >= 2 and detect_regression(field, ys):
+                ax.axvline(x=xs[-1], color="red", linestyle=":", linewidth=1.2)
+                has_regression = True
+
+        # X-axis ticks: use neutral run indices when grouped (not timestamps from one group)
+        if len(groups) > 1 or group_by:
+            max_runs = max(len(groups[k]) for k in all_group_keys)
+            xs_ref = list(range(1, max_runs + 1))
+            labels = [str(i) for i in xs_ref]
+        else:
+            first_pts = groups[all_group_keys[0]]
+            xs_ref = list(range(1, len(first_pts) + 1))
+            labels = [ts[:10] if ts else str(i) for i, (ts, _) in enumerate(first_pts, 1)]
+        ax.set_xticks(xs_ref)
+        ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=7)
+
+        title = f"{domain} / {field}" + ("  ⚠" if has_regression else "")
+        ax.set_title(title, fontsize=9, color="red" if has_regression else "black")
         ax.set_xlabel("Run #")
         ax.set_ylabel(field)
-        ax.set_xticks(xs)
-        ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=7)
         ax.grid(True, linestyle="--", alpha=0.5)
+        if group_by:
+            ax.legend(fontsize=7, loc="best")
 
-        # Highlight regression
-        if len(ys) >= 2:
-            alert = detect_regression(field, ys)
-            if alert:
-                ax.axvline(x=xs[-1], color="red", linestyle=":", linewidth=1.2)
-                ax.set_title(f"{domain} / {field}  ⚠", fontsize=9, color="red")
-
-    # Hide unused subplots
     for idx in range(len(plots), nrows * ncols):
         axes[idx // ncols][idx % ncols].set_visible(False)
 
@@ -280,6 +382,18 @@ def plot_chart(
         print(f"Chart saved to: {output_file}")
     else:
         plt.show()
+
+
+def _distinct_values(records: list[dict], field: str) -> list[str]:
+    """Return unique non-null string values for a top-level field across records."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for r in records:
+        v = r.get(field)
+        if isinstance(v, str) and v not in seen:
+            seen.add(v)
+            result.append(v)
+    return result
 
 
 def main() -> None:
@@ -300,6 +414,25 @@ def main() -> None:
         metavar="FIELD",
         default=None,
         help="Specific metric field to show (default: all numeric fields)",
+    )
+    parser.add_argument(
+        "--pdk",
+        metavar="VALUE",
+        default=None,
+        help="Filter to records with matching pdk (case-insensitive)",
+    )
+    parser.add_argument(
+        "--tool",
+        metavar="VALUE",
+        default=None,
+        help="Filter to records with matching tool_used (case-insensitive)",
+    )
+    parser.add_argument(
+        "--group-by",
+        metavar="DIM",
+        choices=VALID_GROUP_BY,
+        default=None,
+        help="Group series by dimension: pdk, tool, or pdk+tool",
     )
     parser.add_argument("--plot", action="store_true", help="Show matplotlib chart")
     parser.add_argument(
@@ -323,7 +456,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Resolve memory root
     if args.memory_root:
         memory_root = Path(args.memory_root)
     else:
@@ -338,39 +470,77 @@ def main() -> None:
         sys.exit(2)
 
     domains = [args.domain] if args.domain else VALID_DOMAINS
+    group_by: str | None = args.group_by
 
-    # Load and filter records
-    domain_series: dict[str, dict[str, list[tuple[str, float]]]] = {}
+    domain_series: dict[str, SeriesMap] = {}
     total_runs = 0
+    all_design_records: list[dict] = []  # for helpful filter-miss error messages
+
     for domain in domains:
         all_records = load_domain_records(memory_root, domain)
         design_records = filter_by_design(all_records, args.design)
         if not design_records:
             continue
-        series = extract_series(design_records, domain, args.metric)
+        all_design_records.extend(design_records)
+
+        filtered = design_records
+        if args.pdk:
+            filtered = filter_by_pdk(filtered, args.pdk)
+        if args.tool:
+            filtered = filter_by_tool(filtered, args.tool)
+        if not filtered:
+            continue
+
+        series = extract_series(filtered, domain, args.metric, group_by)
         if series:
             domain_series[domain] = series
-            total_runs += len(design_records)
+            total_runs += len(filtered)
 
     if not domain_series:
-        print(
-            f"No runs found for design '{args.design}'"
-            + (f" in domain '{args.domain}'" if args.domain else "")
-            + ".\n"
-            f"Check that the design name matches exactly what orchestrators recorded\n"
-            f"in memory/<domain>/experiences.jsonl (field: 'design_name').",
-            file=sys.stderr,
-        )
+        if not all_design_records:
+            print(
+                f"No runs found for design '{args.design}'"
+                + (f" in domain '{args.domain}'" if args.domain else "")
+                + ".\n"
+                "Check that the design name matches exactly what orchestrators recorded\n"
+                "in memory/<domain>/experiences.jsonl (field: 'design_name').",
+                file=sys.stderr,
+            )
+        else:
+            hints: list[str] = []
+            if args.pdk:
+                avail = _distinct_values(all_design_records, "pdk")
+                hints.append(
+                    f"  Available pdks for design '{args.design}': "
+                    + (", ".join(avail) if avail else "(none)")
+                )
+            if args.tool:
+                avail = _distinct_values(all_design_records, "tool_used")
+                hints.append(
+                    f"  Available tools for design '{args.design}': "
+                    + (", ".join(avail) if avail else "(none)")
+                )
+            print(
+                f"No runs found for design '{args.design}' after applying filters.\n"
+                + "\n".join(hints),
+                file=sys.stderr,
+            )
         sys.exit(1)
 
-    print(f"\nQoR Trend Report")
+    print("\nQoR Trend Report")
     print(f"Design:      {args.design}")
     print(f"Total runs:  {total_runs}")
     print(f"Domains:     {', '.join(sorted(domain_series))}")
+    if args.pdk:
+        print(f"PDK filter:  {args.pdk}")
+    if args.tool:
+        print(f"Tool filter: {args.tool}")
+    if group_by:
+        print(f"Group by:    {group_by}")
     if args.metric:
         print(f"Metric filter: {args.metric}")
 
-    rows = print_table(args.design, domain_series, args.min_runs)
+    rows = print_table(args.design, domain_series, args.min_runs, group_by)
 
     if rows == 0:
         print(
@@ -379,7 +549,7 @@ def main() -> None:
         )
 
     if args.output or args.plot:
-        plot_chart(args.design, domain_series, args.min_runs, args.output)
+        plot_chart(args.design, domain_series, args.min_runs, args.output, group_by)
 
 
 if __name__ == "__main__":
