@@ -37,8 +37,8 @@ A reporting utility that reads all `memory/<domain>/experiences.jsonl` files and
 produces QoR trend tables and optional matplotlib charts for a named design. Use cases:
 
 - Regression detection: flags when a metric degrades across runs (⚠ alert column)
-- PDK comparison: compare WNS/area across sky130 vs GF180 for the same RTL — use `--group-by pdk` (optionally combined with `--pdk VALUE` to filter first)
-- Tool comparison: compare Yosys vs DC synthesis area for the same design — use `--group-by tool` (optionally combined with `--tool VALUE` to filter first)
+- PDK comparison: compare WNS/area across sky130 vs GF180 for the same RTL — use `--group-by pdk` (note: tools/qor_trends.py applies `--pdk` filtering before `--group-by`, so combining `--group-by pdk` with a specific `--pdk VALUE` will collapse to a single group and defeat the comparison)
+- Tool comparison: compare Yosys vs DC synthesis area for the same design — use `--group-by tool` (note: tools/qor_trends.py applies `--tool` filtering before `--group-by`, so combining `--group-by tool` with a specific `--tool VALUE` will collapse to a single group and defeat the comparison)
 
 Usage:
 ```bash

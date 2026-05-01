@@ -352,10 +352,15 @@ def plot_chart(
                 ax.axvline(x=xs[-1], color="red", linestyle=":", linewidth=1.2)
                 has_regression = True
 
-        # X-axis ticks from the first group's timestamps
-        first_pts = groups[all_group_keys[0]]
-        xs_ref = list(range(1, len(first_pts) + 1))
-        labels = [ts[:10] if ts else str(i) for i, (ts, _) in enumerate(first_pts, 1)]
+        # X-axis ticks: use neutral run indices when grouped (not timestamps from one group)
+        if len(groups) > 1 or group_by:
+            max_runs = max(len(groups[k]) for k in all_group_keys)
+            xs_ref = list(range(1, max_runs + 1))
+            labels = [str(i) for i in xs_ref]
+        else:
+            first_pts = groups[all_group_keys[0]]
+            xs_ref = list(range(1, len(first_pts) + 1))
+            labels = [ts[:10] if ts else str(i) for i, (ts, _) in enumerate(first_pts, 1)]
         ax.set_xticks(xs_ref)
         ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=7)
 
@@ -497,8 +502,8 @@ def main() -> None:
                 f"No runs found for design '{args.design}'"
                 + (f" in domain '{args.domain}'" if args.domain else "")
                 + ".\n"
-                f"Check that the design name matches exactly what orchestrators recorded\n"
-                f"in memory/<domain>/experiences.jsonl (field: 'design_name').",
+                "Check that the design name matches exactly what orchestrators recorded\n"
+                "in memory/<domain>/experiences.jsonl (field: 'design_name').",
                 file=sys.stderr,
             )
         else:
@@ -522,7 +527,7 @@ def main() -> None:
             )
         sys.exit(1)
 
-    print(f"\nQoR Trend Report")
+    print("\nQoR Trend Report")
     print(f"Design:      {args.design}")
     print(f"Total runs:  {total_runs}")
     print(f"Domains:     {', '.join(sorted(domain_series))}")
