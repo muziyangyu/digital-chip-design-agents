@@ -279,6 +279,12 @@ python3 tools/qor_trends.py --design aes_core --domain synthesis --metric wns_ns
 
 # Save a matplotlib chart
 python3 tools/qor_trends.py --design aes_core --plot --output aes_core_qor.png
+
+# Compare area/timing across sky130 vs gf180mcu
+python3 tools/qor_trends.py --design aes_core --domain synthesis --group-by pdk
+
+# Compare Yosys vs DC for the same design on sky130, with a grouped chart
+python3 tools/qor_trends.py --design aes_core --pdk sky130 --group-by tool --plot
 ```
 
 Regression alerts fire automatically when a metric moves in the wrong direction between runs (e.g. WNS degrades, coverage drops).
