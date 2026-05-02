@@ -78,6 +78,23 @@ memory/
 └── verification/
 ```
 
+## Design State
+
+`design_state.json` is a cross-orchestrator shared file written to the working directory.
+It persists spec, interfaces, constraints, and per-domain outputs across all 14 orchestrator
+boundaries. Every orchestrator reads it at session start (after `knowledge.md`) and performs
+an atomic read-modify-write at session end (alongside `experiences.jsonl`).
+
+Key top-level fields:
+- `spec` — raw and structured product specification (written by architecture)
+- `interfaces` — AXI/protocol interface list (written by architecture)
+- `constraints` — shared timing, area, and power targets (written by architecture)
+- `architecture`, `rtl`, `synthesis`, `sta`, `pd`, ... — per-domain signoff state
+- `history[]` — append-only execution trace; one entry per orchestrator run
+
+Atomic write protocol: read → modify → write `design_state.tmp` → rename to `design_state.json`.
+This matches the `experiences.jsonl` upsert pattern and prevents partial writes.
+
 ## How Orchestrators Use This
 
 **Session start**: Read `memory/<domain>/knowledge.md` and `memory/<domain>/run_state.md`
