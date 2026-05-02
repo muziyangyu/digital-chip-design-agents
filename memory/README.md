@@ -92,8 +92,7 @@ Key top-level fields:
 - `architecture`, `rtl`, `synthesis`, `sta`, `pd`, ... — per-domain signoff state
 - `history[]` — append-only execution trace; one entry per orchestrator run
 
-Atomic write protocol: read → modify → write `design_state.tmp` → rename to `design_state.json`.
-This matches the `experiences.jsonl` upsert pattern and prevents partial writes.
+Atomic write protocol with multi-writer protection: acquire an exclusive lock (e.g., flock or application-level mutex) around the entire read-modify-write sequence → read `design_state.json` (or {}) and record a version/checksum → modify → write to a unique temp file (e.g., `design_state.<pid>.<uuid>.tmp`) → re-check that the version/checksum of `design_state.json` is unchanged (or retry on mismatch) → rename temp to `design_state.json` while still holding the lock → release the lock. This prevents both partial writes and lost updates from concurrent orchestrators. Apply the same pattern to `experiences.jsonl` upsert operations if multiple writers can touch it.
 
 ## How Orchestrators Use This
 

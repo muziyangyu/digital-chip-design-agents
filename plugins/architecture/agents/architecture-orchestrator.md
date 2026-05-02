@@ -137,7 +137,7 @@ If the file does not exist or fields are null, proceed with empty upstream conte
 Do not fail if any key is absent — treat missing keys as null.
 
 ### Write (session end)
-On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
+On any termination path (signoff, escalation, abandonment, max-turns, interruption, or error), perform an atomic
 read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
@@ -145,7 +145,7 @@ read-modify-write of `design_state.json`:
 4. Set `format_version: "1.0"` if not present.
 5. Merge your domain fields (below) into the top-level object.
 6. Append one entry to `history[]`.
-7. Write to `design_state.tmp`, then rename to `design_state.json`.
+7. Acquire an exclusive lock (e.g., flock or application-level mutex) around the write sequence, write to a unique temp file (e.g., `design_state.<pid>.<uuid>.tmp`), then rename to `design_state.json` while still holding the lock, and finally release the lock to prevent lost updates from concurrent orchestrators.
 Create the file and parent directory if they do not exist.
 
 Domain fields to merge:
