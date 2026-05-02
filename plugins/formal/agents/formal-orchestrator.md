@@ -89,3 +89,47 @@ After signoff (or on escalation/abandon), upsert (create or replace by `run_id`)
 ```
 If the flow ends before signoff (interrupted, error, max turns exceeded), write the record immediately with the stages completed so far and `signoff_achieved: false`. Do not wait for a terminal signoff state.
 Create the file and parent directories if they do not exist.
+
+## Design State
+
+`design_state.json` in the working directory is the shared cross-orchestrator state file.
+
+### Read (session start)
+After reading `memory/formal/knowledge.md`, read `design_state.json` if it exists.
+Extract: `rtl`, `spec`, `interfaces`.
+If the file does not exist or fields are null, proceed with empty upstream context.
+Do not fail if any key is absent — treat missing keys as null.
+
+### Write (session end)
+On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
+read-modify-write of `design_state.json`:
+1. Read the file if it exists, or start from `{}`.
+2. Set `design_name` (from your state object) if not already present.
+3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
+4. Set `format_version: "1.0"` if not present.
+5. Merge only `verification_status.formal_signoff` — do not overwrite `coverage_pct`,
+   `sim_signoff`, or `signoff` set by the verification orchestrator.
+6. Append one entry to `history[]`.
+7. Write to `design_state.tmp`, then rename to `design_state.json`.
+Create the file and parent directory if they do not exist.
+
+Domain fields to merge:
+```json
+{
+  "verification_status": {
+    "formal_signoff": false
+  }
+}
+```
+
+History entry to append:
+```json
+{
+  "timestamp": "<ISO-8601>",
+  "agent": "formal-orchestrator",
+  "stage": "<final stage reached>",
+  "decision": "proceed | escalate | abandoned",
+  "reason": "<one-sentence summary of outcome>",
+  "constraint_ref": "<constraint name or null>"
+}
+```

@@ -63,7 +63,13 @@ Track tool versions, install paths, and MCP configuration choices across setups 
 
 Revisit if tool version mismatches cause repeated debugging across sessions.
 
-## 5. Central "Design" State
+## 5. Central "Design" State ✓ IMPLEMENTED
+
+**Status:** Shipped — all 14 orchestrators read `design_state.json` on entry and write their
+domain sub-object plus a `history[]` entry on exit. Schema covers `spec`, `interfaces`,
+`constraints`, `architecture`, `rtl`, `verification_status`, `synthesis`, `dft`, `sta`,
+`hls`, `pd`, `soc`, `compiler`, `firmware`, `fpga`, `environment`, `tool_feedback`,
+`pending_approval`, and `history[]`.
 
 Today each orchestrator maintains its own session-scoped state object. There is no shared
 artifact that survives an orchestrator boundary, so downstream agents cannot see upstream

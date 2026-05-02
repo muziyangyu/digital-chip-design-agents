@@ -92,3 +92,52 @@ After signoff (or on escalation/abandon), append one JSON line to
 ```
 If the flow ends before signoff (interrupted, error, max turns exceeded), write the record immediately with the stages completed so far and `signoff_achieved: false`. Do not wait for a terminal signoff state.
 Create the file and parent directories if they do not exist.
+
+## Design State
+
+`design_state.json` in the working directory is the shared cross-orchestrator state file.
+
+### Read (session start)
+After reading `memory/fpga/knowledge.md`, read `design_state.json` if it exists.
+Extract: `rtl`, `synthesis`, `constraints`.
+If the file does not exist or fields are null, proceed with empty upstream context.
+Do not fail if any key is absent — treat missing keys as null.
+
+### Write (session end)
+On any termination path (signoff, escalation, abandonment, max-turns, interruption, or error), perform an atomic, locked
+read-modify-write of `design_state.json`:
+1. Acquire an exclusive lock (e.g., flock or application-level mutex) around the entire read-modify-write sequence.
+2. Read the file if it exists, or start from `{}`.
+3. Set `design_name` (from your state object) if not already present.
+4. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
+5. Set `format_version: "1.0"` if not present.
+6. Merge your domain fields (below) into the top-level object.
+7. Append one entry to `history[]`.
+8. Write to a unique temp file (e.g., `design_state.<pid>.<uuid>.tmp`), then rename to `design_state.json` while still holding the lock.
+9. Release the lock to prevent lost updates from concurrent orchestrator exits.
+Create the file and parent directory if they do not exist.
+
+Domain fields to merge:
+```json
+{
+  "fpga": {
+    "target_fpga": "<vendor and part number>",
+    "lut_count": null,
+    "fmax_mhz": null,
+    "timing_met": false,
+    "signoff": false
+  }
+}
+```
+
+History entry to append:
+```json
+{
+  "timestamp": "<ISO-8601>",
+  "agent": "fpga-orchestrator",
+  "stage": "<final stage reached>",
+  "decision": "proceed | escalate | abandoned",
+  "reason": "<one-sentence summary of outcome>",
+  "constraint_ref": "<constraint name or null>"
+}
+```

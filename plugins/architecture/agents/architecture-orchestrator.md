@@ -125,3 +125,57 @@ line must be a valid JSON object followed by a newline:
 ```
 Set `signoff_achieved: false` on partial runs (interrupted, error, max-turns); set to `true` only
 on successful signoff. Create the file and parent directories if they do not exist.
+
+## Design State
+
+`design_state.json` in the working directory is the shared cross-orchestrator state file.
+
+### Read (session start)
+After reading `memory/architecture/knowledge.md`, read `design_state.json` if it exists.
+Extract: `spec`, `constraints`.
+If the file does not exist or fields are null, proceed with empty upstream context.
+Do not fail if any key is absent — treat missing keys as null.
+
+### Write (session end)
+On any termination path (signoff, escalation, abandonment, max-turns, interruption, or error), perform an atomic
+read-modify-write of `design_state.json`:
+1. Acquire an exclusive lock (e.g., flock or application-level mutex) before the entire read-modify-write sequence.
+2. Read the file if it exists, or start from `{}`, and record its version/checksum.
+3. Set `design_name` (from your state object) if not already present.
+4. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
+5. Set `format_version: "1.0"` if not present.
+6. Merge your domain fields (below) into the top-level object.
+7. Append one entry to `history[]`.
+8. Re-check that the version/checksum of `design_state.json` is unchanged; if it changed, retry the read-modify-write loop.
+9. Write to a unique temp file using the pattern `design_state.<pid>.<uuid>.tmp`.
+10. Perform an atomic rename to `design_state.json` while still holding the lock.
+11. Release the lock only after the rename to prevent lost updates from concurrent orchestrators.
+Create the file and parent directory if they do not exist.
+
+Domain fields to merge:
+```json
+{
+  "spec": { "raw": "<user specification verbatim>", "structured": {} },
+  "interfaces": [ { "name": "...", "width": null, "role": "..." } ],
+  "constraints": { "clk_mhz": null, "area_um2": null, "power_mw": null },
+  "architecture": {
+    "selected_candidate": "<name of selected arch>",
+    "candidates": [],
+    "microarch_doc": "<path or inline summary>",
+    "signoff": false,
+    "refinement_needed": false
+  }
+}
+```
+
+History entry to append:
+```json
+{
+  "timestamp": "<ISO-8601>",
+  "agent": "architecture-orchestrator",
+  "stage": "<final stage reached>",
+  "decision": "proceed | escalate | abandoned",
+  "reason": "<one-sentence summary of outcome>",
+  "constraint_ref": "<constraint name or null>"
+}
+```
