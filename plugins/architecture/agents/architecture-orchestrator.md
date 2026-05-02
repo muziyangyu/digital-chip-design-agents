@@ -125,3 +125,53 @@ line must be a valid JSON object followed by a newline:
 ```
 Set `signoff_achieved: false` on partial runs (interrupted, error, max-turns); set to `true` only
 on successful signoff. Create the file and parent directories if they do not exist.
+
+## Design State
+
+`design_state.json` in the working directory is the shared cross-orchestrator state file.
+
+### Read (session start)
+After reading `memory/architecture/knowledge.md`, read `design_state.json` if it exists.
+Extract: `spec`, `constraints`.
+If the file does not exist or fields are null, proceed with empty upstream context.
+Do not fail if any key is absent — treat missing keys as null.
+
+### Write (session end)
+On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
+read-modify-write of `design_state.json`:
+1. Read the file if it exists, or start from `{}`.
+2. Set `design_name` (from your state object) if not already present.
+3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
+4. Set `format_version: "1.0"` if not present.
+5. Merge your domain fields (below) into the top-level object.
+6. Append one entry to `history[]`.
+7. Write to `design_state.tmp`, then rename to `design_state.json`.
+Create the file and parent directory if they do not exist.
+
+Domain fields to merge:
+```json
+{
+  "spec": { "raw": "<user specification verbatim>", "structured": {} },
+  "interfaces": [ { "name": "...", "width": null, "role": "..." } ],
+  "constraints": { "clk_mhz": null, "area_um2": null, "power_mw": null },
+  "architecture": {
+    "selected_candidate": "<name of selected arch>",
+    "candidates": [],
+    "microarch_doc": "<path or inline summary>",
+    "signoff": false,
+    "refinement_needed": false
+  }
+}
+```
+
+History entry to append:
+```json
+{
+  "timestamp": "<ISO-8601>",
+  "agent": "architecture-orchestrator",
+  "stage": "<final stage reached>",
+  "decision": "proceed | escalate | abandoned",
+  "reason": "<one-sentence summary of outcome>",
+  "constraint_ref": "<constraint name or null>"
+}
+```

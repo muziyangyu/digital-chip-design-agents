@@ -122,3 +122,51 @@ Create the file and parent directories if they do not exist.
 If `mcp__plugin_ecc_memory__add_observations` is available in this session, emit each
 applied fix as an observation to entity `chip-design-pd-fixes` immediately after writing
 to `experiences.jsonl`. Skip silently if the tool is absent — JSONL is the canonical record.
+
+## Design State
+
+`design_state.json` in the working directory is the shared cross-orchestrator state file.
+
+### Read (session start)
+After reading `memory/pd/knowledge.md`, read `design_state.json` if it exists.
+Extract: `synthesis`, `sta`, `dft`, `constraints`.
+If the file does not exist or fields are null, proceed with empty upstream context.
+Do not fail if any key is absent — treat missing keys as null.
+
+### Write (session end)
+On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
+read-modify-write of `design_state.json`:
+1. Read the file if it exists, or start from `{}`.
+2. Set `design_name` (from your state object) if not already present.
+3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
+4. Set `format_version: "1.0"` if not present.
+5. Merge your domain fields (below) into the top-level object.
+6. Append one entry to `history[]`.
+7. Write to `design_state.tmp`, then rename to `design_state.json`.
+Create the file and parent directory if they do not exist.
+
+Domain fields to merge:
+```json
+{
+  "pd": {
+    "gds": "<path to GDS-II>",
+    "util_pct": null,
+    "wns_ns": null,
+    "drc_violations": 0,
+    "lvs_errors": 0,
+    "signoff": false
+  }
+}
+```
+
+History entry to append:
+```json
+{
+  "timestamp": "<ISO-8601>",
+  "agent": "physical-design-orchestrator",
+  "stage": "<final stage reached>",
+  "decision": "proceed | escalate | abandoned",
+  "reason": "<one-sentence summary of outcome>",
+  "constraint_ref": "<constraint name or null>"
+}
+```

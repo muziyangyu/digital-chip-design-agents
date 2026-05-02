@@ -109,3 +109,46 @@ Each stage must return:
 3. If max iterations exceeded: stop, present full state and escalation report
 4. Never auto-run per-tool install scripts — present them to the user for review; each MISSING tool gets its own `install-<toolname>.sh` written to `install-missing-tools/`
 5. On completion: confirm `tool-manifest.json` written, all 8 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 MCP config snippets written with resolved absolute paths and printed
+
+## Design State
+
+`design_state.json` in the working directory is the shared cross-orchestrator state file.
+
+### Read (session start)
+Read `design_state.json` if it exists in the working directory.
+Infrastructure does not depend on upstream domain outputs; no specific fields need extraction.
+If the file does not exist, proceed normally.
+
+### Write (session end)
+On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
+read-modify-write of `design_state.json`:
+1. Read the file if it exists, or start from `{}`.
+2. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
+3. Set `format_version: "1.0"` if not present.
+4. Merge your domain fields (below) into the top-level object.
+5. Append one entry to `history[]`.
+6. Write to `design_state.tmp`, then rename to `design_state.json`.
+Create the file and parent directory if they do not exist.
+
+Domain fields to merge:
+```json
+{
+  "environment": {
+    "tools_validated": false,
+    "pdk_installed": null,
+    "signoff": false
+  }
+}
+```
+
+History entry to append:
+```json
+{
+  "timestamp": "<ISO-8601>",
+  "agent": "infrastructure-orchestrator",
+  "stage": "<final stage reached>",
+  "decision": "proceed | escalate | abandoned",
+  "reason": "<one-sentence summary of outcome>",
+  "constraint_ref": null
+}
+```
