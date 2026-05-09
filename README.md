@@ -1,7 +1,7 @@
 # digital-chip-design-agents
 
 > Claude Code marketplace plugin — full digital chip design pipeline.  
-> 13 domains · 14 orchestrators · 15 skill files · architecture through firmware.
+> 15 plugins · 16 skill files · 13 chip-design domains + infrastructure + pipeline orchestrator · closed-loop verification↔RTL feedback.
 
 [![Validate](https://github.com/chuanseng-ng/digital-chip-design-agents/actions/workflows/validate.yml/badge.svg)](https://github.com/chuanseng-ng/digital-chip-design-agents/actions/workflows/validate.yml)
 
@@ -11,7 +11,7 @@
 
 ### Option A — Install script (recommended)
 
-Clone the repo and run one script — all 14 plugins are installed and enabled in a
+Clone the repo and run one script — all 15 plugins are installed and enabled in a
 single step, no repeated commands needed.
 
 **macOS / Linux / Git Bash:**
@@ -28,7 +28,7 @@ cd digital-chip-design-agents
 .\install.ps1
 ```
 
-Restart Claude Code after running — all 15 skills and 14 agents will be active.
+Restart Claude Code after running — all 16 skills and 15 agents will be active.
 
 ### Option B — Marketplace (selective install)
 
@@ -120,6 +120,7 @@ Claude automatically loads the correct skill before executing.
 | `chip-design-firmware` | Embedded Firmware | BSP, HAL drivers, RTOS integration, firmware validation |
 | `chip-design-fpga` | FPGA Emulation | Port ASIC to FPGA, bring up hardware, validate SW on prototype |
 | `chip-design-infrastructure` | Infrastructure & Memory | Detect EDA tools, deploy wrappers, configure MCP servers, distil domain memory |
+| `chip-design-meta` | Pipeline Orchestration | Drive closed-loop verification↔RTL feedback, manage fix_requests, enforce iteration cap |
 
 ---
 
@@ -163,7 +164,7 @@ All 13 domain orchestrators follow the same pattern with domain-specific stages 
 digital-chip-design-agents/
 │
 ├── .claude-plugin/
-│   └── marketplace.json         ← Marketplace registry (all 14 plugins)
+│   └── marketplace.json         ← Marketplace registry (all 15 plugins)
 │
 ├── plugins/                     ← One isolated directory per plugin
 │   ├── architecture/
@@ -179,14 +180,18 @@ digital-chip-design-agents/
 │   │   ├── agents/rtl-design-orchestrator.md
 │   │   └── skills/rtl-design/SKILL.md
 │   ├── ... (13 domain plugins, same layout each)
-│   └── infrastructure/
+│   ├── infrastructure/
+│   │   ├── .claude-plugin/plugin.json
+│   │   ├── agents/infrastructure-orchestrator.md
+│   │   ├── skills/infrastructure/SKILL.md
+│   │   ├── skills/memory-keeper/   ← distils experiences.jsonl → knowledge.md
+│   │   │   ├── SKILL.md
+│   │   │   └── distill.py
+│   │   └── tools/                  ← EDA wrapper scripts and MCP adapters
+│   └── meta/                       ← Cross-domain pipeline orchestrator
 │       ├── .claude-plugin/plugin.json
-│       ├── agents/infrastructure-orchestrator.md
-│       ├── skills/infrastructure/SKILL.md
-│       ├── skills/memory-keeper/   ← distils experiences.jsonl → knowledge.md
-│       │   ├── SKILL.md
-│       │   └── distill.py
-│       └── tools/                  ← EDA wrapper scripts and MCP adapters
+│       ├── agents/pipeline-orchestrator.md
+│       └── skills/pipeline-orchestration/SKILL.md
 │
 ├── ides/                        ← IDE-specific config files (non-Claude)
 │   ├── copilot/
@@ -217,7 +222,7 @@ digital-chip-design-agents/
 
 ## End-to-End Pipeline
 
-The 13 domains map to a complete chip design pipeline:
+The 13 design domains (+ the meta pipeline orchestrator) map to a complete chip design pipeline:
 
 ```
 [Specification]
@@ -227,11 +232,12 @@ The 13 domains map to a complete chip design pipeline:
       │
       ├──► [2. RTL Design]  ──► [3. HLS] (algorithm blocks)
       │           │
-      │           ├──► [4. Functional Verification]
-      │           └──► [5. Formal Verification]
-      │                       │
-      │                       ▼
-      │              [6. Logic Synthesis]
+      │           │           ├──► [4. Functional Verification] ◄──┐
+      │           └──► [5. Formal Verification]    ◄──┤
+      │                       │ (bug found)           │ fix_request loop
+      │                       │                    [Meta / Pipeline Orch.]
+      │                       ▼                       │
+      │              [6. Logic Synthesis]          ────┘
       │                       │
       │           ┌───────────┼───────────┐
       │           ▼           ▼           ▼
