@@ -5,8 +5,8 @@
     "github": "chuanseng-ng"
   },
   "metadata": {
-    "description": "Full digital chip design pipeline — 14 domains from infrastructure setup through tape-out and firmware.",
-    "version": "1.2.0"
+    "description": "Full digital chip design pipeline — 15 plugins across 14 domains, from infrastructure setup through tape-out and firmware, with closed-loop verification↔RTL feedback.",
+    "version": "1.3.0"
   },
   "plugins": [
     {
@@ -120,6 +120,14 @@
       "strict": true,
       "skills": ["./skills/infrastructure", "./skills/memory-keeper"],
       "agents": ["./agents/infrastructure-orchestrator.md"]
+    },
+    {
+      "name": "chip-design-meta",
+      "description": "Cross-domain pipeline orchestrator — drives closed-loop verification↔RTL feedback via design_state.json fix_requests, enforcing a 3-iteration cap with user escalation",
+      "source": "./plugins/meta",
+      "strict": true,
+      "skills": ["./skills/pipeline-orchestration"],
+      "agents": ["./agents/pipeline-orchestrator.md"]
     }
   ]
 }

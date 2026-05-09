@@ -124,7 +124,7 @@ On any termination path (signoff, escalation, abandonment, max-turns), perform a
 read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-3. Set `format_version: "1.0"` if not present.
+3. Set `format_version: "1.0"` if not present. Preserve `"1.1"` if already set.
 4. Merge your domain fields (below) into the top-level object.
 5. Append one entry to `history[]`.
 6. Write to `design_state.tmp`, then rename to `design_state.json`.
