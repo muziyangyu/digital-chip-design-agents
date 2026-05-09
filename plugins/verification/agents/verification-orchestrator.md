@@ -99,7 +99,7 @@ After reading `memory/verification/knowledge.md`, read `design_state.json` if it
 Extract: `spec`, `rtl`, `interfaces`, `constraints`, `fix_requests`, `pipeline_session_id`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
-If re-invoked by the pipeline-orchestrator: check `fix_requests[]` for any entry with `status=fixed` that this orchestrator created. Re-run the regression on the corrected RTL. If regression passes, leave the entry's `status` as `fixed` and proceed to `regression_signoff`. If regression still fails, open a new `fix_request` entry (do not update the old one) so the pipeline-orchestrator can dispatch another RTL cycle.
+If re-invoked by the pipeline-orchestrator: filter `fix_requests[]` for the specific dispatched `fix_request.id` (or at minimum filter by the current `pipeline_session_id` and the latest related request). Re-run the regression on the corrected RTL for that specific entry. If regression passes, leave that `fix_request.status` as `fixed` and proceed to `regression_signoff`. If regression still fails, create a new `fix_request` entry (do not update the old one) so the pipeline-orchestrator can dispatch another RTL cycle.
 
 ### Write (session end)
 On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
@@ -129,14 +129,14 @@ Domain fields to merge:
 - On DUT bug: **append** a new entry to `fix_requests[]`. Never remove, reorder, or overwrite entries created by other agents.
 - Set `status=open`, populate all fields you can observe (test_name, seed, waveform_path, log_path, suspected_rtl, summary, expected_behavior, observed_behavior).
 - Set `session_id` to the value of `pipeline_session_id` read from `design_state.json`. If `pipeline_session_id` is absent or null, set `session_id: null`.
-- Generate `id` as `fr_<YYYYMMDD>_<HHMMSS>_<seq>` where seq is a zero-padded counter within this run.
+- Generate `id` as `fr_<pipeline_session_id>_<YYYYMMDD>_<HHMMSS>_<seq>` (where `pipeline_session_id` is the run-unique UUID; if null, use a generated UUID) where seq is a zero-padded counter within this run. This ensures different orchestrators in the same second cannot collide.
 - Do **not** increment `cross_domain_iteration_count` — that is the pipeline-orchestrator's responsibility.
 - `format_version` must be set to `"1.1"` (or higher) when `fix_requests[]` is populated.
 
 `fix_request` entry schema:
 ```json
 {
-  "id": "fr_<YYYYMMDD>_<HHMMSS>_<seq>",
+  "id": "fr_<pipeline_session_id>_<YYYYMMDD>_<HHMMSS>_<seq>",
   "created_at": "<ISO-8601>",
   "updated_at": "<ISO-8601>",
   "created_by": "verification-orchestrator",

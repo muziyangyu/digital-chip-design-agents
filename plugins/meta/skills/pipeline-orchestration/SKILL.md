@@ -44,7 +44,7 @@ All entries in `design_state.fix_requests[]` must conform to this schema:
 
 ```json
 {
-  "id": "fr_<YYYYMMDD>_<HHMMSS>_<seq>",
+  "id": "fr_<pipeline_session_id>_<YYYYMMDD>_<HHMMSS>_<seq>",
   "created_at": "<ISO-8601>",
   "updated_at": "<ISO-8601>",
   "created_by": "verification-orchestrator | formal-orchestrator",
@@ -102,8 +102,7 @@ All entries in `design_state.fix_requests[]` must conform to this schema:
 
 `cross_domain_iteration_count` in `design_state.json` tracks the total number of
 verification↔RTL dispatch cycles for the current pipeline session. The cap is controlled by
-`pipeline_config.max_cross_domain_iterations` (default: 3 if absent). When the count exceeds
-the cap, the pipeline-orchestrator writes a `pending_approval` entry and exits:
+`pipeline_config.max_cross_domain_iterations` (default: 3 if absent). The orchestrator treats the cap as "reaches or exceeds" (use `>= max_cross_domain_iterations`), writing a `pending_approval` entry and exiting as soon as the iteration count is equal to or greater than the cap, preventing an off-by-one extra cycle before escalation:
 
 ```json
 {

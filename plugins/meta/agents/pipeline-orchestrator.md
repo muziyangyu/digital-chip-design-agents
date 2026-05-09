@@ -84,7 +84,7 @@ Read `design_state.json`.
 
 ## Behaviour Rules
 1. Read the pipeline-orchestration skill before the first stage.
-2. **Anti-recursion guard**: if this agent detects it was spawned by another orchestrator (not by the user directly), read `design_state.json` and return a read-only summary of open fix_requests without dispatching any subagent. Do not create a nested loop.
+2. **Anti-recursion guard**: if this agent detects it was spawned by another orchestrator for monitoring/inspection (i.e., provenance indicates passive/orchestrator-originated without escalation) AND NOT when the trigger is a verification/formal_escalation path that should dispatch RTL/subagents, read `design_state.json` and return a read-only summary of open fix_requests without dispatching any subagent. Allow dispatching subagents when `triggering_reason == "formal_escalation"` or `"verification"`. Do not create a nested loop for passive monitoring.
 3. Increment `cross_domain_iteration_count` in `design_state.json` **before** each dispatch — not after. This ensures an interrupted run does not silently reset the counter.
 4. Never modify `fix_requests[]` fields owned by the producer (verification-orchestrator, formal-orchestrator) or consumer (rtl-design-orchestrator) agents. Only set `cross_domain_iteration_count`, `pipeline_session_id`, `pipeline_config`, `pending_approval`, archive resolved entries in `archive_fix_requests[]`, and append to `history[]`.
 5. Do not invoke this orchestrator in parallel with itself. If you detect an in-flight `claimed` entry with a recent `updated_at`, exit and tell the user to wait.

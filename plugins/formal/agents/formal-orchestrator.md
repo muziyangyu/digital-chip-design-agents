@@ -99,7 +99,7 @@ After reading `memory/formal/knowledge.md`, read `design_state.json` if it exist
 Extract: `rtl`, `spec`, `interfaces`, `fix_requests`, `pipeline_session_id`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
-If re-invoked by the pipeline-orchestrator: check `fix_requests[]` for any `status=fixed` entry this orchestrator created. Re-run the failing property on the corrected RTL. If the property passes, leave the entry's `status` as `fixed` and proceed. If it still fails, open a new `fix_request` entry.
+If re-invoked by the pipeline-orchestrator: filter `fix_requests[]` for the current `fix_request.id` (or current `pipeline_session_id`) and, if applicable, the orchestrator identifier (`created_by=formal-orchestrator`). Re-run the failing property on the corrected RTL only for that specific entry. If the property passes, keep that entry's `status` as `fixed` and proceed. If it still fails, create a new `fix_request` entry for the continued failure.
 
 ### Write (session end)
 On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
@@ -127,7 +127,7 @@ Domain fields to merge:
 `fix_request` entry schema (on CEX found):
 ```json
 {
-  "id": "fr_<YYYYMMDD>_<HHMMSS>_<seq>",
+  "id": "fr_<pipeline_session_id>_<YYYYMMDD>_<HHMMSS>_<seq>",
   "created_at": "<ISO-8601>",
   "updated_at": "<ISO-8601>",
   "created_by": "formal-orchestrator",
