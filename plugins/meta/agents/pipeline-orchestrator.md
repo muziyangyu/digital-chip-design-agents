@@ -69,7 +69,7 @@ Read `design_state.json`.
 3. Append a pipeline-orchestrator history entry with `decision=proceed` and a one-line convergence summary. Exit.
 
 **Escalation branch** (cap exceeded or RTL abandoned): perform an atomic RMW of `design_state.json`:
-1. Set `pending_approval = { "reason": "fix_request loop exceeded <max_cross_domain_iterations> cross-domain iterations", "fix_request_id": "<id>", "last_summary": "<last RTL response diff_summary>", "requires_user": true }`.
+1. Set `pending_approval = { "reason": "<existing reason or 'fix_request loop exceeded <max_cross_domain_iterations> cross-domain iterations'>", "fix_request_id": "<id>", "last_summary": "<last RTL response diff_summary>", "requires_user": true }`. If `pending_approval.reason` already exists (e.g., from divergence detection), preserve it; only set the iteration-cap template if `reason` is empty/undefined, or append the iteration-cap text to the existing reason.
 2. Append history entry with `decision=escalate` and `reason` summarising the last iterations.
 3. Print a clear escalation message to the user: include the fix_request id, failure class, summary, and the last RTL diff attempted.
 
@@ -126,7 +126,7 @@ Treat missing keys as empty/zero/null. Do not fail if the file is absent.
 Atomic read-modify-write of `design_state.json`:
 1. Read the file or start from `{}`.
 2. Set `updated_at` to now.
-3. Preserve `format_version` — do not downgrade from `"1.1"` to `"1.0"`.
+3. Preserve `format_version` — do not downgrade an existing higher version (e.g., avoid changing 1.2 or 1.1 down to 1.0).
 4. Update `cross_domain_iteration_count`.
 5. Update `pipeline_session_id` (set on session start; set to null on success signoff).
 6. Write `pipeline_config` if absent (default: `{ "max_cross_domain_iterations": 3 }`); never overwrite a user-supplied value.
