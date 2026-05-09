@@ -174,8 +174,7 @@ priority:     P0
 4. Corner cases: boundary values, max/min, overflow, underflow — one test each
 5. Reset during active transaction: at least one test per interface
 6. P0 tests must all pass before constrained-random phase begins
-7. DUT bug found during directed test: **suspend flow immediately** — do not continue
-   to constrained-random; flag RTL fix required and wait for confirmation
+7. DUT bug found during directed test: write a `fix_request` entry to `design_state.fix_requests[]` per the schema in the verification-orchestrator Design State section; terminate with `decision=escalate`. The pipeline-orchestrator (`chip-design-meta`) handles RTL re-invocation — do not loop locally or wait for user confirmation.
 
 ### QoR Metrics to Evaluate
 - All V-plan features covered by at least one directed test

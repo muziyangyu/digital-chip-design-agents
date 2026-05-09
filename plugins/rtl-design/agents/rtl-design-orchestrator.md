@@ -56,6 +56,7 @@ When invoking open-source tools, follow the execution hierarchy:
 3. Escalate clearly if max iterations exceeded — show state and root cause
 4. Output: RTL package (filelist.f, all .sv files, assertions, lint/CDC reports)
 5. Read `memory/rtl-design/knowledge.md` before the first stage. Write an experience record to `memory/rtl-design/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
+6. When closing a claimed `fix_request`: set `status=fixed`, populate `rtl_response` (diff_summary, files_changed, fixed_at), append an entry to that fix_request's `history[]`. Use `constraint_ref=<fix_request.id>` in the top-level `history[]` entry. Do not modify any `fix_requests[]` entry not set to `claimed` by this run.
 
 ## Memory
 
@@ -97,9 +98,10 @@ Create the file and parent directories if they do not exist.
 
 ### Read (session start)
 After reading `memory/rtl-design/knowledge.md`, read `design_state.json` if it exists.
-Extract: `spec`, `interfaces`, `constraints`, `architecture`.
+Extract: `spec`, `interfaces`, `constraints`, `architecture`, `fix_requests`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
+If `fix_requests[]` contains any entry with `status=open` AND `created_by ∈ {verification-orchestrator, formal-orchestrator}`: first look up the incoming `fix_request.id` (if dispatched explicitly) and if that entry exists, has `status=open` and `created_by ∈ {verification-orchestrator, formal-orchestrator}`, set that entry's `status=claimed` and `updated_at` and proceed to `rtl_coding` using its scope (`suspected_rtl.module/file/line_range`) and context (`summary + expected_behavior + observed_behavior`). Only if no valid dispatched `fix_request.id` is present, apply the earliest-by-`created_at` fallback (tie-breaker by array order) to pick and claim an entry. Do not modify entries not owned by you.
 
 ### Write (session end)
 On any termination path (signoff, escalation, abandonment, max-turns), perform an atomic
@@ -107,8 +109,9 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Set `format_version: "1.0"` if not present.
+4. Set `format_version: "1.0"` only when absent and otherwise preserve any existing `format_version` value (do not downgrade).
 5. Merge your domain fields (below) into the top-level object.
+5a. If closing a `fix_request`: update only the entry in `fix_requests[]` that this run set to `claimed` — set `status=fixed`, populate `rtl_response`. Do not touch other entries.
 6. Append one entry to `history[]`.
 7. Write to `design_state.tmp`, then rename to `design_state.json`.
 Create the file and parent directory if they do not exist.

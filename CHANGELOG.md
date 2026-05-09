@@ -1,5 +1,31 @@
 # Changelog
 
+## [Unreleased] — feat/rtl-verify-feedback-loop branch
+
+### Added
+
+- **Closed-loop verification↔RTL feedback** (FUTURE_WORK item 6): verification and formal orchestrators now write structured `fix_request` entries to `design_state.json` when a DUT bug or formal CEX is found, instead of suspending with prose-only output. The new `chip-design-meta` plugin (`plugins/meta/agents/pipeline-orchestrator.md`) detects open `fix_requests`, dispatches the RTL orchestrator to fix the bug, re-runs the originating verification or formal check, and loops up to 3 cross-domain iterations before escalating via `pending_approval`.
+- **`fix_request` schema** (`format_version 1.1`): two new top-level fields in `design_state.json` — `fix_requests[]` (structured bug handoff with id, failure_class, suspected_rtl, waveform_path, status lifecycle) and `cross_domain_iteration_count` (integer cap enforced by the pipeline-orchestrator). Fully backward-compatible — all existing readers treat missing keys as null/zero.
+- **`chip-design-meta` plugin** (`plugins/meta/`): 15th plugin in the marketplace, with `pipeline-orchestrator` agent, `pipeline-orchestration` skill (hosts authoritative fix_request schema and dispatch patterns), and persistent memory under `memory/meta/`.
+- **Formal orchestrator fix_request support**: `formal-orchestrator.md` now writes `failure_class=formal_cex` fix_requests (including CEX trace path) on property counter-example, matching the verification orchestrator's protocol. Both route to the RTL orchestrator for fixing in V1.
+
+### Changed
+
+- **Plugin count**: 14 → 15 plugins. CI assertion in `validate.yml` and `ides/copilot/applyto-map.json` domain count updated accordingly.
+- **`verification-orchestrator.md`**: loop-back rule for `directed_tests DUT bug found` and Behaviour Rule 4 updated to write structured fix_requests and exit with `decision=escalate`; Design State Read step extended to handle re-invocation context.
+- **`rtl-design-orchestrator.md`**: Design State Read step extended to detect and claim open fix_requests; new Behaviour Rule 6 documents the fix_request close protocol.
+- **`functional-verification/SKILL.md`**: Domain Rule 7 updated from "suspend and wait for confirmation" to "write fix_request and terminate for pipeline-orchestrator dispatch".
+- **`memory/README.md`**: design_state.json schema documentation updated with `fix_requests[]`, `cross_domain_iteration_count`, and `format_version 1.1` details.
+- **Divergence detection scoped to current session** (`pipeline_session_id`): the pipeline-orchestrator divergence check now compares only against `status=fixed` entries sharing the same `pipeline_session_id`, preventing false escalations when the same bug class legitimately recurs after a refactor in a later session.
+- **Archival on signoff**: pipeline-orchestrator success branch moves resolved `fix_requests[]` entries into `design_state.archive_fix_requests[]` and resets session state, preventing unbounded array growth across long-running designs.
+- **Configurable iteration cap** (`pipeline_config.max_cross_domain_iterations`): iteration limit lifted from hardcoded `3` to a user-tunable field in `design_state.json` (default 3 if absent). Set the field to tune per-design without editing agent files.
+- **LEC unmatched-points loop intentionally deferred to V2**: `lec_run: unmatched points` in `formal-orchestrator.md` is not connected to the fix_request protocol in V1 — proper support requires `synthesis-orchestrator` as a consumer. Documented in `pipeline-orchestration/SKILL.md` V2 extension points.
+- **Removed vestigial per-entry `iteration_count`** (S1): `fix_request` schema no longer includes `iteration_count` — the field was always 0 or 1 in practice because re-failures open a *new* entry. The top-level `cross_domain_iteration_count` is the sole iteration counter. Removed from `meta/SKILL.md`, both producer agent schemas, `rtl-design-orchestrator.md` Behaviour Rule 6 and Write step 5a, the fixture, and CI `REQUIRED_FIELDS`.
+- **Seeded `memory/meta/experiences.jsonl`** (S7): two illustrative records added — one `converged` (single-iteration MAC unit fix) and one `escalated` (AXI DMA cap exceeded after 3 iterations).
+- **Marketplace version bump** and **README reconciliation** (Cosmetic): `metadata.version` bumped to `1.3.0`; README header updated to "15 plugins · 16 skill files"; `chip-design-meta` added to the Available Plugins table.
+
+---
+
 ## [Unreleased] — agent-scope-review branch
 
 ### Added

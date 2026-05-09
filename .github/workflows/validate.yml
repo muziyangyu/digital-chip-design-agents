@@ -131,11 +131,57 @@ jobs:
           # Agents and marketplace entries must be 1:1 (one orchestrator per plugin).
           # Skills may exceed plugins — a plugin can register more than one skill file
           # (e.g. chip-design-infrastructure registers both 'infrastructure' and 'memory-keeper').
-          assert agent_count == mp_count == 14, \
-              f"Count mismatch — expected 14 agents and 14 marketplace entries: agents={agent_count}, marketplace={mp_count}"
+          assert agent_count == mp_count == 15, \
+              f"Count mismatch — expected 15 agents and 15 marketplace entries: agents={agent_count}, marketplace={mp_count}"
           assert skill_count >= mp_count, \
               f"Fewer skills than plugins — each plugin must have at least one skill: skills={skill_count}, plugins={mp_count}"
           print("Count check PASSED")
+          PYEOF
+
+      - name: Validate fix_request fixture schema
+        run: |
+          python3 << 'PYEOF'
+          import json, sys, os
+          REQUIRED_FIELDS = [
+              "id", "created_at", "updated_at", "created_by", "failure_class",
+              "test_name", "property_or_assertion", "seed", "waveform_path",
+              "log_path", "suspected_rtl", "summary", "expected_behavior",
+              "observed_behavior", "session_id", "status",
+              "rtl_response", "history"
+          ]
+          REQUIRED_SUSPECTED_RTL = ["module", "signal", "file", "line_range"]
+          VALID_FAILURE_CLASSES = {"functional", "protocol", "coverage_gap", "formal_cex"}
+          VALID_STATUSES = {"open", "claimed", "fixed", "abandoned"}
+          fixture_path = "plugins/meta/skills/pipeline-orchestration/examples/design_state.fix_request.json"
+          if not os.path.isfile(fixture_path):
+              print(f"ERROR: fixture not found: {fixture_path}", file=sys.stderr)
+              sys.exit(1)
+          d = json.load(open(fixture_path))
+          errors = []
+          if d.get("format_version") != "1.1":
+              errors.append(f"format_version must be '1.1', got {d.get('format_version')!r}")
+          if not isinstance(d.get("fix_requests"), list) or not d["fix_requests"]:
+              errors.append("fix_requests must be a non-empty array in the fixture")
+          if not isinstance(d.get("pipeline_config"), dict):
+              errors.append("pipeline_config must be an object in the fixture")
+          elif "max_cross_domain_iterations" not in d["pipeline_config"]:
+              errors.append("pipeline_config.max_cross_domain_iterations must be present")
+          for i, fr in enumerate(d.get("fix_requests", [])):
+              for f in REQUIRED_FIELDS:
+                  if f not in fr:
+                      errors.append(f"fix_requests[{i}] missing field '{f}'")
+              if fr.get("failure_class") not in VALID_FAILURE_CLASSES:
+                  errors.append(f"fix_requests[{i}].failure_class {fr.get('failure_class')!r} not in {VALID_FAILURE_CLASSES}")
+              if fr.get("status") not in VALID_STATUSES:
+                  errors.append(f"fix_requests[{i}].status {fr.get('status')!r} not in {VALID_STATUSES}")
+              rtl = fr.get("suspected_rtl", {})
+              for f in REQUIRED_SUSPECTED_RTL:
+                  if f not in rtl:
+                      errors.append(f"fix_requests[{i}].suspected_rtl missing '{f}'")
+          if errors:
+              for e in errors: print(f"ERROR: {e}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: {fixture_path} — {len(d['fix_requests'])} fix_request(s), format_version={d['format_version']!r}")
           PYEOF
 
       - name: Validate IDE config files
@@ -151,8 +197,8 @@ jobs:
               errors.append(f"Missing: {applyto_path}")
           else:
               applyto = json.load(open(applyto_path))
-              if len(applyto) != 14:
-                  errors.append(f"{applyto_path}: expected 14 domains, got {len(applyto)}")
+              if len(applyto) != 15:
+                  errors.append(f"{applyto_path}: expected 15 domains, got {len(applyto)}")
               else:
                   print(f"OK: {applyto_path} — {len(applyto)} domains")
 

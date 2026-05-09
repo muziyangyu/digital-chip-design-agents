@@ -12,5 +12,6 @@
   "compiler":      "**/compiler/**,**/*.ll,**/*.td,**/llvm/**",
   "firmware":      "**/firmware/**,**/bsp/**,**/hal/**,**/rtos/**",
   "fpga":          "**/fpga/**,**/*.xdc,**/*.qsf,**/*.xpr,**/*.bit",
-  "infrastructure": "**/infrastructure/**,plugins/infrastructure/**"
+  "infrastructure": "**/infrastructure/**,plugins/infrastructure/**",
+  "meta":           "**/design_state.json,plugins/meta/**"
 }

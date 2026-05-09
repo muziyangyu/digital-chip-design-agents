@@ -143,7 +143,7 @@ read-modify-write of `design_state.json`:
 2. Read the file if it exists, or start from `{}`, and record its version/checksum.
 3. Set `design_name` (from your state object) if not already present.
 4. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-5. Set `format_version: "1.0"` if not present.
+5. Set `format_version: "1.0"` if not present. Preserve `"1.1"` if already set.
 6. Merge your domain fields (below) into the top-level object.
 7. Append one entry to `history[]`.
 8. Re-check that the version/checksum of `design_state.json` is unchanged; if it changed, retry the read-modify-write loop.

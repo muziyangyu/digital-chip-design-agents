@@ -100,29 +100,7 @@ the entire evolution of the design is traceable across sessions.
 
 ## 6. Continuous Verification Loop
 
-Each orchestrator already loops within its own domain (e.g., lint fail → re-run RTL coding,
-coverage gap → re-run constrained random). What is missing is a feedback path *across*
-orchestrator boundaries: when the verification orchestrator finds a DUT bug, there is no
-automated callback to the RTL orchestrator.
-
-The flow changes from:
-
-```
-Architecture → RTL → Verification  (linear, no feedback)
-```
-
-To:
-
-```
-RTL → Verify → [bug found?] → RTL (with bug context) → Verify → … → pass
-```
-
-**Scope of change:**
-- Verification orchestrator writes a structured "RTL fix request" to `design_state.json`
-  on DUT bug detection (functional mismatch or AXI protocol violation).
-- A thin meta-orchestrator (or a cross-domain loop rule) detects the pending request
-  and re-invokes the RTL orchestrator from the `rtl_coding` stage, passing the bug context.
-- Maximum cross-domain iterations: 3 before escalating to the user.
+**Status: Shipped** — `plugins/meta/agents/pipeline-orchestrator.md` + structured `fix_request` schema in `design_state.json` (`format_version 1.1`). See `CHANGELOG.md` for details.
 
 **Prerequisite:** item 5 (design_state.json must exist for the fix request handoff).
 
