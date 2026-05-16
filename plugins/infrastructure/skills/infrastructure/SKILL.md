@@ -539,7 +539,7 @@ Printed MCP config snippets for each tool with resolved absolute paths
 4. Verify MCP snippet files are present in `plugins/infrastructure/mcp/` (all 10 snippets) and that `mcp-adapter.py` + `mcp-session-adapter.py` are present in `plugins/infrastructure/tools/`
 5. FAIL if any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) is still `MISSING`
 6. For each tool with status `MISSING_LOAD_MODULE` in `tool-status.json`: emit a WARN issue with description `"<tool> not in PATH — available via module"` and fix `"source load-modules.sh, then re-run environment_validation"`
-7. If any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) has status `MISSING_LOAD_MODULE`: emit WARN and set `recommendation: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
+7. If any critical-path tool (Yosys, Verilator, OpenROAD, OpenSTA) has status `MISSING_LOAD_MODULE`: emit WARN and set `suggested_next_step: "escalate"` with message `"Critical tool <tool> requires module load before downstream flows can run. Source load-modules.sh and re-run environment_validation."`
 8. Print final sign-off summary: tools detected, tools via modules, wrappers deployed, MCP servers configured
 
 ### Sign-off Checklist
