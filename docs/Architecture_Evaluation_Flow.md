@@ -318,7 +318,7 @@ OUTPUT: {
   "status": "PASS" | "FAIL" | "WARN",
   "output": { ... structured results ... },
   "issues": [ { "severity": "ERROR|WARN", "description": "...", "fix": "..." } ],
-  "recommendation": "proceed | loop_back_to:[stage] | escalate"
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon"
 }
 ```
 

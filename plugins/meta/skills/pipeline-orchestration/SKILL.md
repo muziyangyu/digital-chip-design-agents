@@ -131,11 +131,35 @@ Three additional top-level fields in `design_state.json` are managed exclusively
 
 ### format_version
 
-`design_state.json` uses `format_version: "1.1"` when `fix_requests[]` or
-`cross_domain_iteration_count` are present. All orchestrators must:
-- Preserve `"1.1"` if already set (do not downgrade to `"1.0"`).
-- Set `"1.1"` when first writing a `fix_request`.
-- Treat missing `fix_requests` or `cross_domain_iteration_count` as `[]` / `0` respectively.
+`design_state.json` uses `format_version: "1.2"` when `history[]` entries carry the
+standardized `confidence`, `failure_class`, and `suggested_next_step` fields. All
+orchestrators must:
+- Upgrade to `"1.2"` if not present or currently `"1.0"` or `"1.1"`; never downgrade.
+- `"1.1"` requirements (`fix_requests[]` / `cross_domain_iteration_count` present) are
+  subsumed by `"1.2"` — no separate `"1.1"` upgrade required.
+- Treat missing `fix_requests` or `cross_domain_iteration_count` as `[]` / `0`.
+- Treat missing `confidence`, `failure_class`, or `suggested_next_step` in history entries
+  as `null` for backward compatibility with pre-1.2 data.
+
+### Programmatic branching on standardized history[] fields
+
+After a domain orchestrator completes, the pipeline-orchestrator reads the terminal
+`history[]` entry to make retry/escalate decisions without string-parsing prose. Decision
+table (evaluated in order):
+
+| `confidence` | `failure_class` | `suggested_next_step` | Pipeline action |
+|---|---|---|---|
+| any | `resource_limit` | any | Escalate via `pending_approval` — cap exceeded |
+| `low` | any | `escalate` | Escalate — result unreliable, human review required |
+| `low` | any | any (not escalate) | Escalate — low confidence overrides any retry intent |
+| any | `tool_error` | `retry_stage` | Re-dispatch the same orchestrator once; if still `tool_error`, escalate |
+| any | `functional` \| `coverage_gap` | `escalate` | Write/update `fix_request` and loop back via RTL orchestrator |
+| `high` \| `medium` | `none` | `proceed` | Advance to next stage / signoff |
+| any | any | `abandon` | Escalate via `pending_approval` — child reports unrecoverable, human decision required |
+
+For any combination not in the table, apply the most conservative matching rule (prefer
+`escalate` over retry). Programmatic branches must read from the history entry's structured
+fields — do not re-derive intent from `reason` (free-text, for humans only).
 
 ### Dispatch pattern (pipeline-orchestrator)
 

@@ -49,6 +49,21 @@ When invoking open-source tools, follow the execution hierarchy:
 - open_p0_bugs: 0
 - uvm_fatal_count: 0
 
+## Stage Agent Output Format
+Each stage must return:
+```json
+{
+  "stage": "<stage_name>",
+  "status": "PASS | FAIL | WARN",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "qor": {},
+  "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
+  "output": {}
+}
+```
+
 ## Behaviour Rules
 1. Read the functional-verification skill before executing each stage
 2. Track all bugs in state bugs_found[] — do not discard between stages
@@ -107,7 +122,7 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Set `format_version: "1.1"` if writing `fix_requests[]`; else `"1.0"` if not present. Preserve any existing higher version.
+4. Upgrade `format_version` to `"1.2"` if not present or lower; preserve any higher version without downgrade. (Since 1.2 ≥ 1.1, fix_request compatibility is maintained.)
 5. Merge your domain fields (below) — merge into the existing `verification_status` object
    without overwriting `formal_signoff` if already set by the formal orchestrator.
 6. Append one entry to `history[]`.
@@ -131,7 +146,7 @@ Domain fields to merge:
 - Set `session_id` to the value of `pipeline_session_id` read from `design_state.json`. If `pipeline_session_id` is absent or null, set `session_id: null`.
 - Generate `id` as `fr_<pipeline_session_id>_<YYYYMMDD>_<HHMMSS>_<seq>` (where `pipeline_session_id` is the run-unique UUID; if null, use a generated UUID) where seq is a zero-padded counter within this run. This ensures different orchestrators in the same second cannot collide.
 - Do **not** increment `cross_domain_iteration_count` — that is the pipeline-orchestrator's responsibility.
-- `format_version` must be set to `"1.1"` (or higher) when `fix_requests[]` is populated.
+- `format_version` must be set to `"1.2"` (or higher) when `fix_requests[]` is populated.
 
 `fix_request` entry schema:
 ```json
@@ -169,6 +184,9 @@ History entry to append:
   "agent": "verification-orchestrator",
   "stage": "<final stage reached>",
   "decision": "proceed | escalate | abandoned",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
   "constraint_ref": "<fix_request.id or null>"
 }

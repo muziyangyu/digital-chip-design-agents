@@ -90,11 +90,13 @@ Key top-level fields:
 - `interfaces` — AXI/protocol interface list (written by architecture)
 - `constraints` — shared timing, area, and power targets (written by architecture)
 - `architecture`, `rtl`, `synthesis`, `sta`, `pd`, ... — per-domain signoff state
-- `history[]` — append-only execution trace; one entry per orchestrator run
-- `fix_requests[]` — structured RTL fix requests written by verification/formal on DUT bug; consumed by RTL orchestrator and dispatched by pipeline-orchestrator (format_version 1.1+)
+- `history[]` — append-only execution trace; one entry per orchestrator run, each with: `timestamp`, `agent`, `stage`, `decision` (`proceed|escalate|abandoned`), `confidence` (`high|medium|low`), `failure_class` (see taxonomy below), `suggested_next_step` (`proceed|loop_back_to:<stage>|retry_stage|escalate|abandon`), `reason`, `constraint_ref`
+- `fix_requests[]` — structured RTL fix requests written by verification/formal on DUT bug; consumed by RTL orchestrator and dispatched by pipeline-orchestrator (format_version 1.2+)
 - `cross_domain_iteration_count` — integer count of verification↔RTL feedback cycles driven by pipeline-orchestrator; capped at 3 before escalation
 
-When `fix_requests[]` contains entries with `status=open`, the chip-design-meta `pipeline-orchestrator` is responsible for routing them to the RTL orchestrator for fixing, then re-running verification. The `format_version` field is `"1.1"` when either new field is present.
+`failure_class` values in `history[]` entries: `none` (PASS), `functional`, `timing`, `power_area`, `drc_lvs`, `coverage_gap`, `connectivity`, `tool_error`, `spec_gap`, `resource_limit`. Distinct from `fix_request.failure_class` which is scoped to verification/formal root causes.
+
+When `fix_requests[]` contains entries with `status=open`, the chip-design-meta `pipeline-orchestrator` is responsible for routing them to the RTL orchestrator for fixing, then re-running verification. The `format_version` field is `"1.2"` when history[] entries carry standardized `confidence`/`failure_class`/`suggested_next_step` fields (superset of 1.1).
 
 Atomic write protocol with multi-writer protection: acquire an exclusive lock (e.g., flock or application-level mutex) around the entire read-modify-write sequence → read `design_state.json` (or {}) and record a version/checksum → modify → write to a unique temp file (e.g., `design_state.<pid>.<uuid>.tmp`) → re-check that the version/checksum of `design_state.json` is unchanged (or retry on mismatch) → rename temp to `design_state.json` while still holding the lock → release the lock. This prevents both partial writes and lost updates from concurrent orchestrators. Apply the same pattern to `experiences.jsonl` upsert operations if multiple writers can touch it.
 

@@ -226,13 +226,40 @@ All agents in this system share these configurations:
   "output_format": {
     "stage": "string",
     "status": "PASS | FAIL | WARN",
+    "confidence": "high | medium | low",
+    "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
     "qor": "object — metrics per skill definition",
     "issues": "array — [{severity, description, fix}]",
-    "recommendation": "proceed | loop_back_to:[stage] | escalate",
+    "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
     "output": "object — stage deliverables"
   }
 }
 ```
+
+### Output Field Semantics
+
+**`confidence`** — The orchestrator's self-assessment of result reliability:
+- `high`: deterministic result — clean tool evidence, no waivers or estimates, all sign-off criteria met.
+- `medium`: result holds but relies on waivers, estimates, assumptions, or a tool fallback path.
+- `low`: result depends on unverified assumptions, partial data, or tool errors — human review advised.
+
+**`failure_class`** — Domain-agnostic failure taxonomy; `none` when `status` is `PASS`. Distinct from `fix_request.failure_class` (verification/formal-specific root causes):
+- `functional` — logic or behavioral incorrectness
+- `timing` — setup/hold/WNS violations
+- `power_area` — power or area budget exceeded
+- `drc_lvs` — physical verification failure (DRC, LVS, antenna)
+- `coverage_gap` — verification coverage shortfall
+- `connectivity` — CDC/RDC, protocol, or interface mismatch
+- `tool_error` — EDA tool crash, license issue, or infrastructure failure
+- `spec_gap` — missing or ambiguous specification or requirement
+- `resource_limit` — max iterations, max turns, or compute budget exceeded
+
+**`suggested_next_step`** — Recommended consumer action; `loop_back_to:<stage>` must name a stage in the orchestrator's Stage Sequence:
+- `proceed` — advance to next stage or hand off to downstream orchestrator
+- `loop_back_to:<stage>` — return to an earlier named stage
+- `retry_stage` — re-run the current stage (transient `tool_error` failures)
+- `escalate` — stop and require human decision
+- `abandon` — unrecoverable; terminate the flow
 
 ---
 

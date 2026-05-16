@@ -41,6 +41,21 @@ isa_analysis → backend_dev → assembler_dev → linker_config → runtime_lib
 - runtime_test_pass_pct: >= 99
 - miscompilation_count: 0
 
+## Stage Agent Output Format
+Each stage must return:
+```json
+{
+  "stage": "<stage_name>",
+  "status": "PASS | FAIL | WARN",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "qor": {},
+  "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
+  "output": {}
+}
+```
+
 ## Behaviour Rules
 1. Read the compiler-toolchain skill before executing each stage
 2. Miscompilation (wrong output) = P0 blocker — root cause required before retry
@@ -99,7 +114,7 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Set `format_version: "1.0"` if not present. Preserve `"1.1"` if already set.
+4. Upgrade `format_version` to `"1.2"` if not present or currently `"1.0"` or `"1.1"`; preserve any higher version without downgrade.
 5. Merge your domain fields (below) into the top-level object.
 6. Append one entry to `history[]`.
 7. Write to `design_state.tmp`, then rename to `design_state.json`.
@@ -124,6 +139,9 @@ History entry to append:
   "agent": "compiler-orchestrator",
   "stage": "<final stage reached>",
   "decision": "proceed | escalate | abandoned",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
   "constraint_ref": "<constraint name or null>"
 }

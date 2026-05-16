@@ -1,5 +1,5 @@
 {
-  "format_version": "1.1",
+  "format_version": "1.2",
   "design_name": "example_mac_unit",
   "created_at": "2025-01-15T10:00:00Z",
   "updated_at": "2025-01-15T12:30:00Z",
@@ -69,6 +69,9 @@
       "agent": "rtl-design-orchestrator",
       "stage": "rtl_signoff",
       "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
       "reason": "RTL signoff achieved",
       "constraint_ref": null
     },
@@ -77,6 +80,9 @@
       "agent": "verification-orchestrator",
       "stage": "directed_tests",
       "decision": "escalate",
+      "confidence": "high",
+      "failure_class": "functional",
+      "suggested_next_step": "escalate",
       "reason": "DUT bug found — fix_request fr_20250115_103000_001 opened",
       "constraint_ref": "fr_20250115_103000_001"
     },
@@ -85,6 +91,9 @@
       "agent": "rtl-design-orchestrator",
       "stage": "rtl_coding",
       "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
       "reason": "Fix for fr_20250115_103000_001 applied",
       "constraint_ref": "fr_20250115_103000_001"
     },
@@ -93,6 +102,9 @@
       "agent": "pipeline-orchestrator",
       "stage": "signoff_or_escalate",
       "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
       "reason": "All fix_requests resolved in 1 iteration",
       "constraint_ref": "fr_20250115_103000_001"
     }
