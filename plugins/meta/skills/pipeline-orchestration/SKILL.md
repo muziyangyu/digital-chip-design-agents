@@ -153,7 +153,7 @@ table (evaluated in order):
 | `low` | any | `escalate` | Escalate — result unreliable, human review required |
 | `low` | any | any (not escalate) | Escalate — low confidence overrides any retry intent |
 | any | `tool_error` | `retry_stage` | Re-dispatch the same orchestrator once; if still `tool_error`, escalate |
-| any | `functional` \| `coverage_gap` | `escalate` | Write/update `fix_request` and loop back via RTL orchestrator |
+| any | `functional` \| `coverage_gap` | `escalate` | Append new `fix_request` and loop back via RTL orchestrator |
 | `high` \| `medium` | `none` | `proceed` | Advance to next stage / signoff |
 | any | any | `abandon` | Escalate via `pending_approval` — child reports unrecoverable, human decision required |
 

@@ -38,7 +38,7 @@ with a warning rather than dispatching a duplicate.
 ### dispatch_to_producer
 For each open `fix_request` (process one at a time, earliest `created_at` first; if equal, use array order):
 1. Increment `cross_domain_iteration_count` in `design_state.json` (atomic RMW).
-2. Check the cap: if `cross_domain_iteration_count > max_cross_domain_iterations` (from `pipeline_config.max_cross_domain_iterations`, default 3), proceed directly to `signoff_or_escalate` (escalation branch).
+2. Check the cap: if `cross_domain_iteration_count >= max_cross_domain_iterations` (from `pipeline_config.max_cross_domain_iterations`, default 3), proceed directly to `signoff_or_escalate` (escalation branch).
 2a. Divergence check: if the incoming open `fix_request` has the same `suspected_rtl.module` AND `summary` (or the same `property_or_assertion` for `failure_class=formal_cex`) as any entry with `status=fixed` **and `session_id` equal to the current `pipeline_session_id`** in `fix_requests[]`, the prior fix did not hold within this session. Write `pending_approval` with `reason="divergence detected — same failure recurred after prior fix"` and `fix_request_id=<id>`, append a history entry with `decision=escalate`, and proceed directly to `signoff_or_escalate` (escalation branch) without dispatching RTL.
 3. Spawn the RTL orchestrator via the Agent tool with `subagent_type: chip-design-rtl:rtl-design-orchestrator`.
    Pass the `fix_request.id` in the prompt so the child locates its work item.
