@@ -158,8 +158,28 @@ jobs:
               sys.exit(1)
           d = json.load(open(fixture_path))
           errors = []
-          if d.get("format_version") != "1.1":
-              errors.append(f"format_version must be '1.1', got {d.get('format_version')!r}")
+          VALID_FORMAT_VERSIONS = {"1.1", "1.2"}
+          if d.get("format_version") not in VALID_FORMAT_VERSIONS:
+              errors.append(f"format_version must be one of {sorted(VALID_FORMAT_VERSIONS)}, got {d.get('format_version')!r}")
+          VALID_CONFIDENCE = {"high", "medium", "low"}
+          VALID_HISTORY_FC = {"none", "functional", "timing", "power_area", "drc_lvs", "coverage_gap", "connectivity", "tool_error", "spec_gap", "resource_limit"}
+          VALID_NEXT_STEP = {"proceed", "retry_stage", "escalate", "abandon"}
+          if d.get("format_version") == "1.2":
+              history = d.get("history")
+              if not isinstance(history, list):
+                  errors.append("format_version 1.2 requires history[] to be a list")
+              else:
+                  for i, h in enumerate(history):
+                      if not isinstance(h, dict):
+                          errors.append(f"history[{i}] must be an object")
+                          continue
+                      if h.get("confidence") not in VALID_CONFIDENCE:
+                          errors.append(f"history[{i}].confidence missing/invalid: {h.get('confidence')!r}")
+                      if h.get("failure_class") not in VALID_HISTORY_FC:
+                          errors.append(f"history[{i}].failure_class missing/invalid: {h.get('failure_class')!r}")
+                      sns = h.get("suggested_next_step")
+                      if not (isinstance(sns, str) and (sns in VALID_NEXT_STEP or sns.startswith("loop_back_to:"))):
+                          errors.append(f"history[{i}].suggested_next_step missing/invalid: {sns!r}")
           if not isinstance(d.get("fix_requests"), list) or not d["fix_requests"]:
               errors.append("fix_requests must be a non-empty array in the fixture")
           if not isinstance(d.get("pipeline_config"), dict):

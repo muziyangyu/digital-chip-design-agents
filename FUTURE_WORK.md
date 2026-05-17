@@ -106,33 +106,29 @@ the entire evolution of the design is traceable across sessions.
 
 ## 7. Agent Contract Standardization
 
-The stage-agent output format defined in `docs/MASTER_INDEX.md` is already close to a
-unified contract, but three fields are missing: confidence score, failure class, and
-suggested next step. Without these, orchestrators use ad-hoc `recommendation` strings
-and cannot drive retry logic programmatically.
+**Status: Shipped** — All 15 orchestrator `.md` files now emit the extended `output_format`
+per stage and the standardized `history[]` entry. `design_state.json` format_version bumped
+to `"1.2"`. Canonical schema in `docs/MASTER_INDEX.md`. Programmatic branching decision
+table in `plugins/meta/skills/pipeline-orchestration/SKILL.md`.
 
-**Target stage-agent output schema (additions in bold):**
+Shipped schema (replaces the old `recommendation` field):
 
 ```json
 {
   "stage": "<stage_name>",
   "status": "PASS | FAIL | WARN",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "qor": {},
   "issues": [{ "severity": "ERROR | WARN", "description": "...", "fix": "..." }],
-  "recommendation": "proceed | loop_back_to:<stage> | escalate",
-  "output": {},
-  "confidence": 0.85,
-  "failure_class": "none | invalid_rtl | verification_failure | interface_mismatch | incomplete_spec",
-  "suggested_next_step": "<agent_or_stage_name>"
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
+  "output": {}
 }
 ```
 
-`confidence` (0.0–1.0) allows orchestrators to weight outputs when multiple candidates
-exist or when deciding whether to proceed without human review (item 11).
-`failure_class` feeds directly into the retry strategy table in item 10.
-`suggested_next_step` makes orchestration logic explicit rather than embedded in prose rules.
-
-All 14 orchestrator `.md` files must be updated to emit and consume these fields.
+`confidence` (enum `high|medium|low`) drives auto-proceed vs escalate decisions in the
+pipeline-orchestrator. `failure_class` feeds the retry strategy table. `suggested_next_step`
+supersedes the old `recommendation` string and makes orchestration logic programmatic.
 
 ## 8. Constraint Awareness
 

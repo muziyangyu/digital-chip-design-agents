@@ -38,7 +38,7 @@ with a warning rather than dispatching a duplicate.
 ### dispatch_to_producer
 For each open `fix_request` (process one at a time, earliest `created_at` first; if equal, use array order):
 1. Increment `cross_domain_iteration_count` in `design_state.json` (atomic RMW).
-2. Check the cap: if `cross_domain_iteration_count > max_cross_domain_iterations` (from `pipeline_config.max_cross_domain_iterations`, default 3), proceed directly to `signoff_or_escalate` (escalation branch).
+2. Check the cap: if `cross_domain_iteration_count >= max_cross_domain_iterations` (from `pipeline_config.max_cross_domain_iterations`, default 3), proceed directly to `signoff_or_escalate` (escalation branch).
 2a. Divergence check: if the incoming open `fix_request` has the same `suspected_rtl.module` AND `summary` (or the same `property_or_assertion` for `failure_class=formal_cex`) as any entry with `status=fixed` **and `session_id` equal to the current `pipeline_session_id`** in `fix_requests[]`, the prior fix did not hold within this session. Write `pending_approval` with `reason="divergence detected — same failure recurred after prior fix"` and `fix_request_id=<id>`, append a history entry with `decision=escalate`, and proceed directly to `signoff_or_escalate` (escalation branch) without dispatching RTL.
 3. Spawn the RTL orchestrator via the Agent tool with `subagent_type: chip-design-rtl:rtl-design-orchestrator`.
    Pass the `fix_request.id` in the prompt so the child locates its work item.
@@ -58,19 +58,28 @@ Pass the `fix_request.id` in the prompt so the child knows which item to re-vali
 Block until the child completes.
 
 ### check_iteration_cap
-Read `design_state.json`.
-- If `verification_status.signoff=true` (or `formal_signoff=true` for formal flows) and no new open `fix_requests[]` entry was written: the loop converged → proceed to `signoff_or_escalate` (success branch).
-- If a new `fix_request` was opened by the re-verification run: loop back to `dispatch_to_producer` with the new entry.
+Read `design_state.json`. Also read the re-verifier's terminal `history[]` entry (the most
+recent entry from `verification-orchestrator` or `formal-orchestrator`) to extract its
+standardized fields (`confidence`, `failure_class`, `suggested_next_step`).
+- If the re-verifier's `confidence=low`: escalate regardless of signoff status — result is
+  unreliable.
+- If the re-verifier's `failure_class=resource_limit` OR `suggested_next_step=abandon`:
+  escalate immediately.
+- If `verification_status.signoff=true` (or `formal_signoff=true` for formal flows) AND no
+  new open `fix_requests[]` entry was written: loop converged → proceed to
+  `signoff_or_escalate` (success branch).
+- If a new `fix_request` was opened by the re-verification run: loop back to
+  `dispatch_to_producer` with the new entry.
 
 ### signoff_or_escalate
 **Success branch**: perform an atomic RMW of `design_state.json`:
 1. Move all `fix_requests[]` entries with `session_id = pipeline_session_id` and `status=fixed|abandoned` into `design_state.archive_fix_requests[]`. Remove those entries from `fix_requests[]`.
 2. Reset `cross_domain_iteration_count` to 0. Set `pipeline_session_id` to null.
-3. Append a pipeline-orchestrator history entry with `decision=proceed` and a one-line convergence summary. Exit.
+3. Append a pipeline-orchestrator history entry with `decision=proceed`, `confidence=high`, `failure_class=none`, `suggested_next_step=proceed`, and a one-line convergence summary. Exit.
 
-**Escalation branch** (cap exceeded or RTL abandoned): perform an atomic RMW of `design_state.json`:
+**Escalation branch** (cap exceeded, RTL abandoned, or unreliable result): perform an atomic RMW of `design_state.json`:
 1. Set `pending_approval = { "reason": "<existing reason or 'fix_request loop exceeded <max_cross_domain_iterations> cross-domain iterations'>", "fix_request_id": "<id>", "last_summary": "<last RTL response diff_summary>", "requires_user": true }`. If `pending_approval.reason` already exists (e.g., from divergence detection), preserve it; only set the iteration-cap template if `reason` is empty/undefined, or append the iteration-cap text to the existing reason.
-2. Append history entry with `decision=escalate` and `reason` summarising the last iterations.
+2. Append history entry with `decision=escalate`, `confidence=low`, `failure_class=resource_limit` (cap exceeded) or `functional` (divergence detected) or the re-verifier's `failure_class` if escalating on low confidence, `suggested_next_step=escalate`, and `reason` summarising the last iterations.
 3. Print a clear escalation message to the user: include the fix_request id, failure class, summary, and the last RTL diff attempted.
 
 ## Loop-Back Rules
@@ -81,6 +90,21 @@ Read `design_state.json`.
 - All `fix_requests[]` entries created during this pipeline run have `status=fixed`
 - `verification_status.signoff=true` (or `formal_signoff=true`) for the re-verified domain
 - `cross_domain_iteration_count ≤ pipeline_config.max_cross_domain_iterations` (default 3)
+
+## Stage Agent Output Format
+Each stage must return:
+```json
+{
+  "stage": "<stage_name>",
+  "status": "PASS | FAIL | WARN",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "qor": {},
+  "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
+  "output": {}
+}
+```
 
 ## Behaviour Rules
 1. Read the pipeline-orchestration skill before the first stage.
@@ -126,7 +150,7 @@ Treat missing keys as empty/zero/null. Do not fail if the file is absent.
 Atomic read-modify-write of `design_state.json`:
 1. Read the file or start from `{}`.
 2. Set `updated_at` to now.
-3. Preserve `format_version` — do not downgrade an existing higher version (e.g., avoid changing 1.2 or 1.1 down to 1.0).
+3. Upgrade `format_version` to `"1.2"` if not present or lower; preserve any higher version without downgrade.
 4. Update `cross_domain_iteration_count`.
 5. Update `pipeline_session_id` (set on session start; set to null on success signoff).
 6. Write `pipeline_config` if absent (default: `{ "max_cross_domain_iterations": 3 }`); never overwrite a user-supplied value.
@@ -142,6 +166,9 @@ History entry to append:
   "agent": "pipeline-orchestrator",
   "stage": "signoff_or_escalate",
   "decision": "proceed | escalate",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<convergence or escalation summary>",
   "constraint_ref": "<last fix_request.id processed>"
 }

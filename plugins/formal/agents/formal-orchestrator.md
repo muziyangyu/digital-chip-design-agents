@@ -48,6 +48,21 @@ When invoking open-source tools, follow the execution hierarchy:
 - lec_unmatched_points: 0
 - vacuous_proofs: 0
 
+## Stage Agent Output Format
+Each stage must return:
+```json
+{
+  "stage": "<stage_name>",
+  "status": "PASS | FAIL | WARN",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "qor": {},
+  "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
+  "output": {}
+}
+```
+
 ## Behaviour Rules
 1. Read the formal-verification skill before executing each stage
 2. CEX from RTL bug: append a `fix_request` entry to `design_state.fix_requests[]` with `failure_class=formal_cex` (include CEX trace path in `waveform_path`); append history entry with `decision=escalate` and `constraint_ref=<fix_request.id>`; terminate. Do not retry locally — the pipeline-orchestrator owns RTL re-invocation.
@@ -107,7 +122,7 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Set `format_version: "1.1"` if writing a `fix_request`; else `"1.0"` if not present. Preserve any existing higher version.
+4. Upgrade `format_version` to `"1.2"` if not present or lower; preserve any higher version without downgrade. (Since 1.2 ≥ 1.1, fix_request compatibility is maintained.)
 5. Merge only `verification_status.formal_signoff` — do not overwrite `coverage_pct`,
    `sim_signoff`, or `signoff` set by the verification orchestrator.
 6. If a CEX was found: append a new entry to `fix_requests[]` per the schema below. Set `session_id` to the value of `pipeline_session_id` read from `design_state.json` (null if absent). Never remove, reorder, or overwrite entries created by other agents.
@@ -160,6 +175,9 @@ History entry to append:
   "agent": "formal-orchestrator",
   "stage": "<final stage reached>",
   "decision": "proceed | escalate | abandoned",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
   "constraint_ref": "<fix_request.id or null>"
 }

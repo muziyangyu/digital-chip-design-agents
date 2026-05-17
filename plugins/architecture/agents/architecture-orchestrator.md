@@ -73,9 +73,11 @@ Each stage must return:
 {
   "stage": "<stage_name>",
   "status": "PASS | FAIL | WARN",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "qor": {},
   "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
-  "recommendation": "proceed | loop_back_to:<stage> | escalate",
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "output": {}
 }
 ```
@@ -143,7 +145,7 @@ read-modify-write of `design_state.json`:
 2. Read the file if it exists, or start from `{}`, and record its version/checksum.
 3. Set `design_name` (from your state object) if not already present.
 4. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-5. Set `format_version: "1.0"` if not present. Preserve `"1.1"` if already set.
+5. Upgrade `format_version` to `"1.2"` if not present or currently `"1.0"` or `"1.1"`; preserve any higher version without downgrade.
 6. Merge your domain fields (below) into the top-level object.
 7. Append one entry to `history[]`.
 8. Re-check that the version/checksum of `design_state.json` is unchanged; if it changed, retry the read-modify-write loop.
@@ -175,6 +177,9 @@ History entry to append:
   "agent": "architecture-orchestrator",
   "stage": "<final stage reached>",
   "decision": "proceed | escalate | abandoned",
+  "confidence": "high | medium | low",
+  "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
   "constraint_ref": "<constraint name or null>"
 }
