@@ -70,6 +70,8 @@ Each stage must return:
 3. Co-simulation output mismatch is always a blocker — root cause before retry
 4. Output: HLS RTL package + co-sim report + interface documentation
 5. Read `memory/hls/knowledge.md` before the first stage. Write an experience record to `memory/hls/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
+7. Checkpoint gate (at `hls_signoff` only): before setting `hls.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"hls_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "hls_signoff", "agent": "hls-orchestrator", "reason": "checkpoint hls_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: latency_cycles, ii_cycles, cosim_match>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `hls.signoff=true`. On re-invocation: if `"hls_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 
 ## Memory
 
@@ -112,7 +114,7 @@ Create the file and parent directories if they do not exist.
 
 ### Read (session start)
 After reading `memory/hls/knowledge.md`, read `design_state.json` if it exists.
-Extract: `spec`, `constraints`.
+Extract: `spec`, `constraints`, `pipeline_config`, `approved_checkpoints`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
 
@@ -122,9 +124,9 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Upgrade `format_version` to `"1.2"` if not present or currently `"1.0"` or `"1.1"`; preserve any higher version without downgrade.
+4. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
 5. Merge your domain fields (below) into the top-level object.
-6. Append one entry to `history[]`.
+6. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
 7. Write to `design_state.tmp`, then rename to `design_state.json`.
 Create the file and parent directory if they do not exist.
 

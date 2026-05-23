@@ -111,6 +111,8 @@ Each stage must return:
 3. If max iterations exceeded: stop, present full state and escalation report
 4. Never auto-run per-tool install scripts — present them to the user for review; each MISSING tool gets its own `install-<toolname>.sh` written to `install-missing-tools/`
 5. On completion: confirm `tool-manifest.json` written, all 8 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 MCP config snippets written with resolved absolute paths and printed
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
+7. Checkpoint gate (at `environment_validation` only): before setting `environment.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"environment_validation"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "environment_validation", "agent": "infrastructure-orchestrator", "reason": "checkpoint environment_validation requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: tools_detected, wrappers_deployed>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `environment.signoff=true`. On re-invocation: if `"environment_validation"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 
 ## Design State
 
@@ -118,7 +120,7 @@ Each stage must return:
 
 ### Read (session start)
 Read `design_state.json` if it exists in the working directory.
-Infrastructure does not depend on upstream domain outputs; no specific fields need extraction.
+Infrastructure does not depend on upstream domain outputs; extract `pipeline_config`, `approved_checkpoints` for the checkpoint gate (Behaviour Rule 6).
 If the file does not exist, proceed normally.
 
 ### Write (session end)
@@ -126,9 +128,9 @@ On any termination path (signoff, escalation, abandonment, max-turns), perform a
 read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-3. Upgrade `format_version` to `"1.2"` if not present or currently `"1.0"` or `"1.1"`; preserve any higher version without downgrade.
+3. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
 4. Merge your domain fields (below) into the top-level object.
-5. Append one entry to `history[]`.
+5. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
 6. Write to `design_state.tmp`, then rename to `design_state.json`.
 Create the file and parent directory if they do not exist.
 

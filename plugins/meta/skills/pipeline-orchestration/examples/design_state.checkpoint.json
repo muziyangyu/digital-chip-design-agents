@@ -1,0 +1,185 @@
+{
+  "format_version": "1.3",
+  "design_name": "example_dsp_core",
+  "created_at": "2026-05-01T09:00:00Z",
+  "updated_at": "2026-05-01T11:45:00Z",
+  "cross_domain_iteration_count": 0,
+  "pipeline_session_id": null,
+  "pipeline_config": {
+    "max_cross_domain_iterations": 3,
+    "checkpoints": ["arch_signoff", "rtl_signoff", "signoff"]
+  },
+  "approved_checkpoints": [
+    { "stage": "arch_signoff", "approved_at": "2026-05-01T10:30:00Z", "approved_by": "user" }
+  ],
+  "pending_approval": {
+    "type": "checkpoint",
+    "stage": "rtl_signoff",
+    "agent": "rtl-design-orchestrator",
+    "reason": "checkpoint rtl_signoff requires human approval before proceeding",
+    "fix_request_id": null,
+    "last_summary": "lint_errors: 0, cdc_violations: 0, 4 modules implemented",
+    "requires_user": true
+  },
+  "fix_requests": [],
+  "archive_fix_requests": [],
+  "architecture": {
+    "selected_candidate": "pipelined_mac_array",
+    "candidates": [],
+    "microarch_doc": "docs/dsp_core_microarch.md",
+    "signoff": true,
+    "refinement_needed": false
+  },
+  "rtl": {
+    "top_module": "dsp_core",
+    "files": ["rtl/dsp_core.sv", "rtl/mac_unit.sv", "rtl/acc_bank.sv", "rtl/ctrl_fsm.sv"],
+    "lint_clean": true,
+    "cdc_clean": true,
+    "signoff": false
+  },
+  "history": [
+    {
+      "timestamp": "2026-05-01T09:00:00Z",
+      "agent": "architecture-orchestrator",
+      "stage": "spec_analysis",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "Product spec parsed — 256-tap FIR, 500 MHz target, 28nm PDK",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T09:20:00Z",
+      "agent": "architecture-orchestrator",
+      "stage": "arch_exploration",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "3 candidates evaluated; pipelined_mac_array selected for best PPA balance",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T09:45:00Z",
+      "agent": "architecture-orchestrator",
+      "stage": "perf_modelling",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "gem5 model shows 520 MHz achievable with 4-stage pipeline",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T10:05:00Z",
+      "agent": "architecture-orchestrator",
+      "stage": "power_area_estimation",
+      "decision": "proceed",
+      "confidence": "medium",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "McPAT estimate: 1.8 mm², 85 mW — within 90% of budget",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T10:15:00Z",
+      "agent": "architecture-orchestrator",
+      "stage": "risk_assessment",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "No HIGH risks; clock domain crossing mitigated by sync cells",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T10:25:00Z",
+      "agent": "architecture-orchestrator",
+      "stage": "arch_signoff",
+      "decision": "await_approval",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "escalate",
+      "reason": "checkpoint arch_signoff requires human approval before proceeding",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T10:32:00Z",
+      "agent": "architecture-orchestrator",
+      "stage": "arch_signoff",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "arch_signoff approved by user — architecture.signoff set to true",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T10:40:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "module_planning",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "Module hierarchy defined: dsp_core, mac_unit, acc_bank, ctrl_fsm",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T11:00:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "rtl_coding",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "All 4 modules implemented in SystemVerilog",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T11:15:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "lint_check",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "Verilator lint: 0 errors, 2 warnings (waived)",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T11:25:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "cdc_rdc_analysis",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "0 unwaived CDC violations — sync cells in place",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T11:35:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "synth_check",
+      "decision": "proceed",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "proceed",
+      "reason": "Yosys synth_check: WNS +0.3 ns, area within estimate",
+      "constraint_ref": null
+    },
+    {
+      "timestamp": "2026-05-01T11:45:00Z",
+      "agent": "rtl-design-orchestrator",
+      "stage": "rtl_signoff",
+      "decision": "await_approval",
+      "confidence": "high",
+      "failure_class": "none",
+      "suggested_next_step": "escalate",
+      "reason": "checkpoint rtl_signoff requires human approval before proceeding",
+      "constraint_ref": null
+    }
+  ]
+}
