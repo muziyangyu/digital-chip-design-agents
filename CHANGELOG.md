@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased] — feat/approval-gates-traceability branch
+
+### Added
+
+- **Approval checkpoints** (FUTURE_WORK item 11, part A): proactive human-in-the-loop gates at any orchestrator's sign-off boundary, controlled by `pipeline_config.checkpoints[]` in `design_state.json`. Default positions: `arch_signoff`, `rtl_signoff`, and `signoff` (PD tape-out). When a checkpoint fires, the orchestrator sets `pending_approval { type: "checkpoint", stage, agent }` and halts without completing sign-off; the user resumes by adding the stage to `approved_checkpoints[]` and re-invoking. Empty `checkpoints` ⇒ fully autonomous (backward compatible).
+- **Per-stage execution trace** (FUTURE_WORK item 11, part B): all 15 orchestrators now append one `history[]` entry per completed stage (PASS/FAIL/WARN) rather than a single terminal entry per run. Enables post-run audits without replaying the full agent conversation. Entry shape is unchanged (9-field schema).
+- **`format_version "1.3"`**: new capability tier in `design_state.json` covering checkpoints + per-stage trace. All orchestrators upgrade to `"1.3"` on first write; prior-version files remain readable.
+- **`design_state.checkpoint.json` fixture**: new golden example under `plugins/meta/skills/pipeline-orchestration/examples/` demonstrating a `pending_approval { type: "checkpoint" }` pause, `approved_checkpoints[]` entry, and per-stage history trace across architecture → RTL stages.
+
+### Changed
+
+- **`pending_approval` schema extended**: added `type` (`checkpoint` | `escalation`), `stage`, and `agent` fields. Backward-compatible — readers treating missing `type` as `"escalation"` remain correct.
+- **Ownership rules amended**: domain orchestrators may now set `pending_approval` with `type: "checkpoint"` at their own sign-off stage; `type: "escalation"` remains the sole responsibility of the pipeline-orchestrator.
+- **`pipeline_config` extended**: added `checkpoints` array (list of stage name strings, default `[]`).
+- **`approved_checkpoints[]` added**: new top-level field; each entry `{ "stage", "approved_at", "approved_by" }`. Written by the user or by an orchestrator acting on an explicit approval instruction.
+- **All 15 orchestrators updated**: Design State Read now extracts `pipeline_config` and `approved_checkpoints`; Design State Write upgrades `format_version` to `"1.3"`; all orchestrators carry two new Behaviour Rules (per-stage trace + checkpoint gate).
+- **CI validation extended**: `VALID_FORMAT_VERSIONS` now includes `"1.3"`; new inline Python checks for `pipeline_config.checkpoints`, `approved_checkpoints`, `pending_approval.type`; both fixtures validated on every PR.
+- **`memory/README.md`** updated with `format_version 1.3` tier, `checkpoints`, `approved_checkpoints`, and extended `pending_approval` field documentation.
+
+---
+
 ## [Unreleased] — feat/rtl-verify-feedback-loop branch
 
 ### Added
