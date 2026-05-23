@@ -1,5 +1,6 @@
 # Claude files
 .claude/*
+CLAUDE.md
 
 # Python files
 __pycache__/

@@ -158,7 +158,7 @@ jobs:
               sys.exit(1)
           d = json.load(open(fixture_path))
           errors = []
-          VALID_FORMAT_VERSIONS = {"1.1", "1.2"}
+          VALID_FORMAT_VERSIONS = {"1.1", "1.2", "1.3"}
           if d.get("format_version") not in VALID_FORMAT_VERSIONS:
               errors.append(f"format_version must be one of {sorted(VALID_FORMAT_VERSIONS)}, got {d.get('format_version')!r}")
           VALID_CONFIDENCE = {"high", "medium", "low"}
@@ -180,6 +180,26 @@ jobs:
                       sns = h.get("suggested_next_step")
                       if not (isinstance(sns, str) and (sns in VALID_NEXT_STEP or sns.startswith("loop_back_to:"))):
                           errors.append(f"history[{i}].suggested_next_step missing/invalid: {sns!r}")
+          if d.get("format_version") == "1.3":
+              pc = d.get("pipeline_config", {})
+              if "checkpoints" in pc and not isinstance(pc["checkpoints"], list):
+                  errors.append("pipeline_config.checkpoints must be a list if present")
+              elif "checkpoints" in pc:
+                  for i, ck in enumerate(pc["checkpoints"]):
+                      if not isinstance(ck, str):
+                          errors.append(f"pipeline_config.checkpoints[{i}] must be a string")
+              ac = d.get("approved_checkpoints")
+              if ac is not None:
+                  if not isinstance(ac, list):
+                      errors.append("approved_checkpoints must be a list if present")
+                  else:
+                      for i, entry in enumerate(ac):
+                          if not isinstance(entry, dict) or "stage" not in entry:
+                              errors.append(f"approved_checkpoints[{i}] must be an object with 'stage'")
+              pa = d.get("pending_approval")
+              if pa is not None:
+                  if pa.get("type") not in {"checkpoint", "escalation"}:
+                      errors.append(f"pending_approval.type must be 'checkpoint' or 'escalation', got {pa.get('type')!r}")
           if not isinstance(d.get("fix_requests"), list) or not d["fix_requests"]:
               errors.append("fix_requests must be a non-empty array in the fixture")
           if not isinstance(d.get("pipeline_config"), dict):
@@ -202,6 +222,47 @@ jobs:
               for e in errors: print(f"ERROR: {e}", file=sys.stderr)
               sys.exit(1)
           print(f"OK: {fixture_path} — {len(d['fix_requests'])} fix_request(s), format_version={d['format_version']!r}")
+
+          # Validate checkpoint fixture (format_version 1.3)
+          checkpoint_fixture = "plugins/meta/skills/pipeline-orchestration/examples/design_state.checkpoint.json"
+          if not os.path.isfile(checkpoint_fixture):
+              print(f"ERROR: checkpoint fixture not found: {checkpoint_fixture}", file=sys.stderr)
+              sys.exit(1)
+          c = json.load(open(checkpoint_fixture))
+          cerrors = []
+          if c.get("format_version") not in VALID_FORMAT_VERSIONS:
+              cerrors.append(f"format_version must be one of {sorted(VALID_FORMAT_VERSIONS)}, got {c.get('format_version')!r}")
+          if c.get("format_version") == "1.3":
+              pc = c.get("pipeline_config", {})
+              if not isinstance(pc.get("checkpoints"), list):
+                  cerrors.append("pipeline_config.checkpoints must be a list in 1.3 fixture")
+              ac = c.get("approved_checkpoints")
+              if ac is None or not isinstance(ac, list):
+                  cerrors.append("approved_checkpoints must be a list in 1.3 fixture")
+              else:
+                  for i, entry in enumerate(ac):
+                      if not isinstance(entry, dict) or "stage" not in entry:
+                          cerrors.append(f"approved_checkpoints[{i}] must have 'stage'")
+              pa = c.get("pending_approval")
+              if pa is not None and pa.get("type") not in {"checkpoint", "escalation"}:
+                  cerrors.append(f"pending_approval.type invalid: {pa.get('type')!r}")
+              hist = c.get("history", [])
+              if not isinstance(hist, list) or len(hist) == 0:
+                  cerrors.append("history[] must be a non-empty list in 1.3 fixture")
+              else:
+                  for i, h in enumerate(hist):
+                      if not isinstance(h, dict): continue
+                      if h.get("confidence") not in VALID_CONFIDENCE:
+                          cerrors.append(f"history[{i}].confidence invalid: {h.get('confidence')!r}")
+                      if h.get("failure_class") not in VALID_HISTORY_FC:
+                          cerrors.append(f"history[{i}].failure_class invalid: {h.get('failure_class')!r}")
+                      sns = h.get("suggested_next_step")
+                      if not (isinstance(sns, str) and (sns in VALID_NEXT_STEP or sns.startswith("loop_back_to:"))):
+                          cerrors.append(f"history[{i}].suggested_next_step invalid: {sns!r}")
+          if cerrors:
+              for e in cerrors: print(f"ERROR (checkpoint fixture): {e}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: {checkpoint_fixture} — format_version={c.get('format_version')!r}, {len(c.get('history', []))} history entries")
           PYEOF
 
       - name: Validate IDE config files

@@ -95,7 +95,9 @@ All entries in `design_state.fix_requests[]` must conform to this schema:
 
 - `rtl-design-orchestrator` owns the `open→claimed` and `claimed→fixed|abandoned` transitions.
 - Only the `rtl-design-orchestrator` sets `status=claimed→fixed` or `claimed→abandoned`.
-- Only the `pipeline-orchestrator` sets `cross_domain_iteration_count`, `pipeline_session_id`, `pipeline_config`, `pending_approval`, and moves resolved entries to `archive_fix_requests[]`.
+- Only the `pipeline-orchestrator` sets `cross_domain_iteration_count`, `pipeline_session_id`, `pipeline_config`, and moves resolved entries to `archive_fix_requests[]`.
+- Domain orchestrators **may** set `pending_approval` exclusively with `type: "checkpoint"` at their own sign-off stage; `type: "escalation"` remains the sole responsibility of the `pipeline-orchestrator`.
+- `approved_checkpoints[]` is written by the user (or by an orchestrator executing an explicit approval instruction) and read by all orchestrators.
 - All agents may append to `fix_request.history[]` but must not overwrite each other's entries.
 
 ### Iteration cap
@@ -107,6 +109,9 @@ verification↔RTL dispatch cycles for the current pipeline session. The cap is 
 ```json
 {
   "pending_approval": {
+    "type": "escalation",
+    "stage": null,
+    "agent": "pipeline-orchestrator",
     "reason": "fix_request loop exceeded 3 cross-domain iterations",
     "fix_request_id": "<id>",
     "last_summary": "<last rtl_response.diff_summary>",
@@ -122,24 +127,100 @@ before invoking the pipeline-orchestrator again. Optionally increase
 
 ### Pipeline session fields
 
-Three additional top-level fields in `design_state.json` are managed exclusively by the `pipeline-orchestrator`:
+Top-level fields in `design_state.json` managed by the `pipeline-orchestrator` and related infrastructure:
 
 - **`pipeline_session_id`** (`"ps_<YYYYMMDD>_<HHMMSS>"` or `null`): identifies the active pipeline run. Set on entry, cleared (set to null) on successful signoff. Scopes divergence checks and archival to the current session — entries from prior sessions are ignored by the divergence check.
 - **`pipeline_config`** (`object`): user-tunable pipeline settings. Written with defaults on first run; never overwritten if already present.
   - `max_cross_domain_iterations` (integer, default 3): the iteration cap for the feedback loop.
+  - `checkpoints` (array of strings, default `[]`): stage names that require human approval before the producing orchestrator may declare sign-off. Empty array ⇒ fully autonomous (preserves today's behavior). Example default: `["arch_signoff", "rtl_signoff", "signoff"]`. Written by the user; domain orchestrators read but never overwrite this field.
+- **`approved_checkpoints[]`**: list of stages the user has approved. Schema per entry: `{ "stage": "<stage name>", "approved_at": "<ISO-8601>", "approved_by": "user" }`. Written by the user (or by an orchestrator acting on an explicit approval instruction); read by all orchestrators at their sign-off gate check.
 - **`archive_fix_requests[]`**: resolved entries from completed pipeline sessions, moved here by the pipeline-orchestrator on successful signoff. Same schema as `fix_requests[]`. Never written by domain orchestrators.
 
 ### format_version
 
-`design_state.json` uses `format_version: "1.2"` when `history[]` entries carry the
-standardized `confidence`, `failure_class`, and `suggested_next_step` fields. All
-orchestrators must:
-- Upgrade to `"1.2"` if not present or currently `"1.0"` or `"1.1"`; never downgrade.
-- `"1.1"` requirements (`fix_requests[]` / `cross_domain_iteration_count` present) are
-  subsumed by `"1.2"` — no separate `"1.1"` upgrade required.
+`design_state.json` version tiers (each tier is a superset of the previous):
+- **`"1.1"`**: `fix_requests[]` and `cross_domain_iteration_count` present.
+- **`"1.2"`**: `history[]` entries carry standardized `confidence`, `failure_class`, and `suggested_next_step` fields.
+- **`"1.3"`**: `pipeline_config.checkpoints`, `approved_checkpoints[]`, `pending_approval.type/stage/agent` present; per-stage `history[]` entries (one entry per completed stage, not just one terminal entry per run).
+
+All orchestrators must:
+- Upgrade to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; never downgrade.
+- All prior-version requirements are subsumed by `"1.3"` — no separate upgrades required.
 - Treat missing `fix_requests` or `cross_domain_iteration_count` as `[]` / `0`.
-- Treat missing `confidence`, `failure_class`, or `suggested_next_step` in history entries
-  as `null` for backward compatibility with pre-1.2 data.
+- Treat missing `confidence`, `failure_class`, or `suggested_next_step` in history entries as `null` for backward compatibility.
+- Treat missing `pipeline_config.checkpoints` as `[]` (no checkpoints — fully autonomous).
+- Treat missing `approved_checkpoints` as `[]`.
+- Treat missing `pending_approval.type` as `"escalation"` for backward compatibility.
+
+### Approval Checkpoints
+
+Proactive human-in-the-loop gates at configurable stage boundaries. Orthogonal to the
+failure-driven `pending_approval` (type `escalation`) set by the pipeline-orchestrator.
+
+#### Checkpoint configuration
+
+```json
+{
+  "pipeline_config": {
+    "checkpoints": ["arch_signoff", "rtl_signoff", "signoff"]
+  },
+  "approved_checkpoints": [
+    { "stage": "arch_signoff", "approved_at": "<ISO-8601>", "approved_by": "user" }
+  ]
+}
+```
+
+Default: `checkpoints: []` → no gates, fully autonomous (backward compatible).
+
+#### Gate logic (applied by every domain orchestrator at its sign-off stage)
+
+Before setting the domain's `signoff=true` and writing it to `design_state.json`:
+
+1. **Skip the gate in fix-request-servicing mode**: if a `fix_request.id` was passed in the
+   prompt (invoked by meta to repair a bug), skip the checkpoint check entirely. Checkpoints
+   gate forward design progression, not the automated verify↔RTL repair loop.
+
+2. Read `pipeline_config.checkpoints` from `design_state.json`. If the orchestrator's
+   sign-off stage name appears in the list **and** does not appear in `approved_checkpoints[].stage`:
+   - Atomic RMW: set `pending_approval`:
+     ```json
+     {
+       "type": "checkpoint",
+       "stage": "<sign-off stage name>",
+       "agent": "<this-orchestrator>",
+       "reason": "checkpoint <stage> requires human approval before proceeding",
+       "fix_request_id": null,
+       "last_summary": "<QoR one-liner>",
+       "requires_user": true
+     }
+     ```
+   - Append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`,
+     `failure_class: "none"`, `suggested_next_step: "escalate"`, `reason: "checkpoint <stage> requires human approval"`.
+   - **Do not** set `signoff=true`. Print the gate message to the user and halt.
+
+3. On re-invocation: if the stage now appears in `approved_checkpoints[]`, clear
+   `pending_approval` (atomic RMW → set to `null`), then proceed to set `signoff=true`.
+
+#### Resume paths
+
+The user may resume a gated orchestrator by either:
+- **Manual edit**: append `{ "stage": "<stage>", "approved_at": "<ISO-8601>", "approved_by": "user" }` to `approved_checkpoints[]` and set `pending_approval=null` in `design_state.json`, then re-invoke the orchestrator.
+- **Approval instruction**: invoke the orchestrator with "approve checkpoint `<stage>`" in the prompt — the orchestrator performs the `approved_checkpoints[]` append and `pending_approval` clear (atomic RMW) itself, then continues.
+
+#### pending_approval type-awareness (pipeline-orchestrator)
+
+The `pipeline-orchestrator`'s `detect_open_fix_requests` halts on **any** non-null
+`pending_approval` (conservative — a domain checkpoint also blocks meta dispatch). It prints
+a type-specific message:
+- `type: "checkpoint"`: "Checkpoint `<stage>` is awaiting human approval (set by `<agent>`). Approve or skip to continue."
+- `type: "escalation"`: (existing message) "Fix-request loop escalation — review required."
+
+#### Per-stage history trace (format_version 1.3)
+
+Every domain orchestrator appends one `history[]` entry after each internal stage completes
+(PASS, FAIL, WARN), not just at session end. The last entry written is the terminal entry
+read by the pipeline-orchestrator's decision table. Entry shape is unchanged (same 9-field
+schema). This enables post-run audits without replaying the full conversation.
 
 ### Programmatic branching on standardized history[] fields
 

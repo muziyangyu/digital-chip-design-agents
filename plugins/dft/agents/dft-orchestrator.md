@@ -66,6 +66,8 @@ Each stage must return:
 3. Do not proceed to dft_signoff until SAF coverage meets target
 4. Output: DFT netlist, .scandef, ATPG patterns, BSDL file
 5. Read `memory/dft/knowledge.md` before the first stage. Write an experience record to `memory/dft/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
+7. Checkpoint gate (at `dft_signoff` only): before setting `dft.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"dft_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "dft_signoff", "agent": "dft-orchestrator", "reason": "checkpoint dft_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: SAF coverage, BIST pass status>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `dft.signoff=true`. On re-invocation: if `"dft_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 
 ## Memory
 
@@ -106,7 +108,7 @@ Create the file and parent directories if they do not exist.
 
 ### Read (session start)
 After reading `memory/dft/knowledge.md`, read `design_state.json` if it exists.
-Extract: `rtl`, `synthesis`.
+Extract: `rtl`, `synthesis`, `pipeline_config`, `approved_checkpoints`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
 
@@ -116,9 +118,9 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Upgrade `format_version` to `"1.2"` if not present or currently `"1.0"` or `"1.1"`; preserve any higher version without downgrade.
+4. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
 5. Merge your domain fields (below) into the top-level object.
-6. Append one entry to `history[]`.
+6. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
 7. Write to `design_state.tmp`, then rename to `design_state.json`.
 Create the file and parent directory if they do not exist.
 

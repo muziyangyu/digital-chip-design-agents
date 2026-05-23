@@ -26,7 +26,10 @@ detect_open_fix_requests → dispatch_to_producer → await_completion → re_ve
 ## Stage Descriptions
 
 ### detect_open_fix_requests
-First, read `design_state.json` and check if `pending_approval` is non-null. If so, print the prior escalation message to the user and exit without dispatching — the user must clear `pending_approval` (set to `null`) and reset `cross_domain_iteration_count` to 0 before re-invoking.
+First, read `design_state.json` and check if `pending_approval` is non-null. If so, print a type-specific message and exit without dispatching:
+- `type: "checkpoint"`: "Checkpoint `<pending_approval.stage>` is awaiting human approval (set by `<pending_approval.agent>`). Approve or skip to continue — see pipeline-orchestration skill for resume paths."
+- `type: "escalation"` (or absent — backward compatibility): print the prior escalation summary.
+The user must clear `pending_approval` (set to `null`) before re-invoking; for escalation type also reset `cross_domain_iteration_count` to 0.
 Read `design_state.json`. Collect all entries in `fix_requests[]` with `status=open`.
 If none found, exit cleanly with a one-line summary. Do not modify the file.
 Guard against concurrent invocations: if any entry has `status=claimed` and its `updated_at`
@@ -78,7 +81,7 @@ standardized fields (`confidence`, `failure_class`, `suggested_next_step`).
 3. Append a pipeline-orchestrator history entry with `decision=proceed`, `confidence=high`, `failure_class=none`, `suggested_next_step=proceed`, and a one-line convergence summary. Exit.
 
 **Escalation branch** (cap exceeded, RTL abandoned, or unreliable result): perform an atomic RMW of `design_state.json`:
-1. Set `pending_approval = { "reason": "<existing reason or 'fix_request loop exceeded <max_cross_domain_iterations> cross-domain iterations'>", "fix_request_id": "<id>", "last_summary": "<last RTL response diff_summary>", "requires_user": true }`. If `pending_approval.reason` already exists (e.g., from divergence detection), preserve it; only set the iteration-cap template if `reason` is empty/undefined, or append the iteration-cap text to the existing reason.
+1. Set `pending_approval = { "type": "escalation", "stage": null, "agent": "pipeline-orchestrator", "reason": "<existing reason or 'fix_request loop exceeded <max_cross_domain_iterations> cross-domain iterations'>", "fix_request_id": "<id>", "last_summary": "<last RTL response diff_summary>", "requires_user": true }`. If `pending_approval.reason` already exists (e.g., from divergence detection), preserve it; only set the iteration-cap template if `reason` is empty/undefined, or append the iteration-cap text to the existing reason.
 2. Append history entry with `decision=escalate`, `confidence=low`, `failure_class=resource_limit` (cap exceeded) or `functional` (divergence detected) or the re-verifier's `failure_class` if escalating on low confidence, `suggested_next_step=escalate`, and `reason` summarising the last iterations.
 3. Print a clear escalation message to the user: include the fix_request id, failure class, summary, and the last RTL diff attempted.
 
@@ -143,14 +146,14 @@ Create the file and parent directories if they do not exist.
 `design_state.json` in the working directory is the shared cross-orchestrator state file.
 
 ### Read (session start)
-Read `design_state.json`. Extract: `fix_requests`, `cross_domain_iteration_count`, `pending_approval`, `pipeline_session_id`, `pipeline_config`.
+Read `design_state.json`. Extract: `fix_requests`, `cross_domain_iteration_count`, `pending_approval`, `pipeline_session_id`, `pipeline_config`, `approved_checkpoints`.
 Treat missing keys as empty/zero/null. Do not fail if the file is absent.
 
 ### Write (session end)
 Atomic read-modify-write of `design_state.json`:
 1. Read the file or start from `{}`.
 2. Set `updated_at` to now.
-3. Upgrade `format_version` to `"1.2"` if not present or lower; preserve any higher version without downgrade.
+3. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
 4. Update `cross_domain_iteration_count`.
 5. Update `pipeline_session_id` (set on session start; set to null on success signoff).
 6. Write `pipeline_config` if absent (default: `{ "max_cross_domain_iterations": 3 }`); never overwrite a user-supplied value.

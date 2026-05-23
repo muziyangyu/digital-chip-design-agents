@@ -198,11 +198,16 @@ structured way to distinguish a recoverable code error from an ambiguous spec.
 
 **Prerequisite:** item 7 (failure_class field in output contract).
 
-## 11. Human-in-the-loop Control Points + Observability
+## ~~11. Human-in-the-loop Control Points + Observability~~ ✓ DONE (format_version 1.3)
 
-Currently the only human interaction points are invocation and max-iteration escalation.
+~~Currently the only human interaction points are invocation and max-iteration escalation.
 There are no optional approval gates between pipeline stages, and there is no structured
-record of why an agent made a particular decision.
+record of why an agent made a particular decision.~~
+
+Implemented in format_version 1.3: `pipeline_config.checkpoints` config, `approved_checkpoints[]` resume
+list, `pending_approval.type` discriminator, per-stage `history[]` trace (one entry per stage),
+and checkpoint gate logic in all 15 orchestrators. See `plugins/meta/skills/pipeline-orchestration/SKILL.md`
+§ Approval Checkpoints.
 
 ### Approval Checkpoints
 
