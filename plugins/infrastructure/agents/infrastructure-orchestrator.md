@@ -120,7 +120,7 @@ Each stage must return:
 
 ### Read (session start)
 Read `design_state.json` if it exists in the working directory.
-Infrastructure does not depend on upstream domain outputs; extract `pipeline_config`, `approved_checkpoints` for the checkpoint gate (Behaviour Rule 6).
+Infrastructure does not depend on upstream domain outputs; extract `pipeline_config`, `approved_checkpoints` for the checkpoint gate (Behaviour Rule 7).
 If the file does not exist, proceed normally.
 
 ### Write (session end)
@@ -151,7 +151,7 @@ History entry to append:
   "timestamp": "<ISO-8601>",
   "agent": "infrastructure-orchestrator",
   "stage": "<final stage reached>",
-  "decision": "proceed | escalate | abandoned",
+  "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",

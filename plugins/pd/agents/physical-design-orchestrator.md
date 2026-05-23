@@ -82,7 +82,7 @@ Each stage must return:
 4. Output: GDS-II, sign-off STA report, DRC clean, LVS clean, power report
 5. Read `memory/pd/knowledge.md` before the first stage. Write an experience record to `memory/pd/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
 6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
-7. Checkpoint gate (at `signoff` only): before setting `pd.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "signoff", "agent": "physical-design-orchestrator", "reason": "checkpoint signoff requires human approval before tape-out proceeds", "fix_request_id": null, "last_summary": "<QoR one-liner: WNS, DRC violations, util_pct>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `pd.signoff=true`. On re-invocation: if `"signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
+7. Checkpoint gate (at `signoff` only): before setting `pd.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"pd_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "pd_signoff", "agent": "physical-design-orchestrator", "reason": "checkpoint pd_signoff requires human approval before tape-out proceeds", "fix_request_id": null, "last_summary": "<QoR one-liner: WNS, DRC violations, util_pct>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `pd.signoff=true`. On re-invocation: if `"pd_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 
 ## Memory
 
@@ -182,7 +182,7 @@ History entry to append:
   "timestamp": "<ISO-8601>",
   "agent": "physical-design-orchestrator",
   "stage": "<final stage reached>",
-  "decision": "proceed | escalate | abandoned",
+  "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",

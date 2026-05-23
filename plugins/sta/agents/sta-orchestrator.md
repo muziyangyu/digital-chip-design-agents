@@ -155,7 +155,7 @@ History entry to append:
   "timestamp": "<ISO-8601>",
   "agent": "sta-orchestrator",
   "stage": "<final stage reached>",
-  "decision": "proceed | escalate | abandoned",
+  "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
