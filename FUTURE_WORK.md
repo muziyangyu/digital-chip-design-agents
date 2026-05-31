@@ -140,7 +140,7 @@ Implemented in format_version 1.4: `design_state.constraints` is the single sour
 for all design constraint values. All 11 constraint-bearing domain SKILL.md files now reference
 `design_state.constraints.<key>` instead of hardcoded literals (retained as documented defaults).
 Stage-entry validation halts with `pending_approval.type: "constraint_gap"` when required keys
-are missing. `constraint_ref` in `history[]` entries tags every QoR decision against the
+are missing or null. `constraint_ref` in `history[]` entries tags every QoR decision against the
 constraint key it evaluated. See `plugins/meta/skills/pipeline-orchestration/SKILL.md`
 § Constraints Schema and `CHANGELOG.md` for full details.
 

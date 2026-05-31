@@ -49,10 +49,10 @@ highest-value MCP use case in the entire flow.
 - eco_guidance: ECO cell count > 2%          → escalate to PD team
 
 ## Sign-off Criteria
-- setup_wns_ns: >= 0 at all corners (from `design_state.constraints.timing.wns_ns_target`, default: 0)
-- setup_tns_ps: == 0 at all corners (from `design_state.constraints.timing.tns_ns_target`, default: 0)
-- hold_wns_ps: >= 0 at all corners
-- hold_tns_ps: == 0 at all corners
+- setup_wns_ns: >= design_state.constraints.timing.wns_ns_target at all corners (default: 0)
+- setup_tns_ps: <= design_state.constraints.timing.tns_ns_target * 1000 at all corners (default: 0 ns → 0 ps)
+- hold_wns_ps: >= design_state.constraints.timing.wns_ns_target * 1000 at all corners (default: 0 ns → 0 ps)
+- hold_tns_ps: <= design_state.constraints.timing.tns_ns_target * 1000 at all corners (default: 0 ns → 0 ps)
 
 ## Stage Agent Output Format
 Each stage must return:

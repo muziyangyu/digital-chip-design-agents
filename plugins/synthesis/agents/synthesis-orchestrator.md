@@ -42,7 +42,7 @@ When invoking open-source tools, follow the execution hierarchy:
 - netlist_qc FAIL (unmapped cells)      → compile_final    (max 2×)
 
 ## Sign-off Criteria
-- wns_ns: >= 0 (from `design_state.constraints.timing.wns_ns_target`, default: 0)
+- wns_ns: >= design_state.constraints.timing.wns_ns_target (default: 0)
 - lec_unmatched_points: 0
 - unmapped_cells: 0
 

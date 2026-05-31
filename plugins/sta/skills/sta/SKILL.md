@@ -260,7 +260,7 @@ See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema f
 
 **Required at entry (`constraint_validation`) — hard-fail if missing:**
 - `constraints.clock.clk_mhz` — clock frequency used to interpret timing results
-- `constraints.pvt_corners` — at least one entry with non-null `voltage_v` and `temp_c`; defaults shown in corner matrix above apply if absent (WARN, no halt)
+- `constraints.pvt_corners` — at least one entry with non-null `voltage_v` and `temp_c`; missing or invalid entries should hard-fail during `constraint_validation`
 
 **Optional (schema defaults apply when absent):**
 - `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off threshold

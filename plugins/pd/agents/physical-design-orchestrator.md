@@ -52,13 +52,13 @@ placed/routed, prefer:
 - signoff FAIL (power/EM)                      → power_optimization    (max 1×)
 
 ## Sign-off Criteria (all required)
-- setup_wns_ns: >= 0 (from `design_state.constraints.timing.wns_ns_target`, default: 0)
-- hold_wns_ps: >= 0
-- setup_tns_ps: == 0 (from `design_state.constraints.timing.tns_ns_target`, default: 0)
+- setup_wns_ns: >= design_state.constraints.timing.wns_ns_target (default: 0)
+- hold_wns_ps: >= design_state.constraints.timing.hold_ps_target * 1000 (default: 0 ps → 0 ns)
+- setup_tns_ps: <= design_state.constraints.timing.tns_ns_target * 1000 (default: 0 ns → 0 ps)
 - drc_violations: 0
 - lvs_errors: 0
 - antenna_violations: 0
-- core_area_util_pct: <= 85 (from `design_state.constraints.area.utilization_pct_max`, default: 85)
+- core_area_util_pct: <= design_state.constraints.area.utilization_pct_max (default: 85)
 
 ## Stage Agent Output Format
 Each stage must return:
