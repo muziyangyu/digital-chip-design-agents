@@ -136,21 +136,141 @@ Top-level fields in `design_state.json` managed by the `pipeline-orchestrator` a
 - **`approved_checkpoints[]`**: list of stages the user has approved. Schema per entry: `{ "stage": "<stage name>", "approved_at": "<ISO-8601>", "approved_by": "user" }`. Written by the user (or by an orchestrator acting on an explicit approval instruction); read by all orchestrators at their sign-off gate check.
 - **`archive_fix_requests[]`**: resolved entries from completed pipeline sessions, moved here by the pipeline-orchestrator on successful signoff. Same schema as `fix_requests[]`. Never written by domain orchestrators.
 
+### Constraints Schema (authoritative)
+
+`design_state.constraints` is the single source of truth for design-intent parameters across all
+domain orchestrators. Defined once here; domain SKILL.md files reference these keys and document
+their default fallbacks.
+
+```json
+"constraints": {
+  "clock": {
+    "clk_mhz": null,
+    "clk_uncertainty_ps": null
+  },
+  "pvt_corners": [
+    { "name": "ss_setup", "process": "SS", "voltage_v": null, "temp_c": null, "checks": ["setup"] },
+    { "name": "ff_hold",  "process": "FF", "voltage_v": null, "temp_c": null, "checks": ["hold"] }
+  ],
+  "timing": {
+    "wns_ns_target": 0,
+    "tns_ns_target": 0,
+    "fanout_max": 32,
+    "skew_ps_max": 100,
+    "transition_ps_max": 200,
+    "insertion_delay_ps_max": 500
+  },
+  "area": {
+    "area_um2": null,
+    "utilization_pct_target": 75,
+    "utilization_pct_max": 85
+  },
+  "power": {
+    "power_mw": null,
+    "leakage_pct_max": 15,
+    "ir_drop_pct_max": 5,
+    "gating_coverage_pct_min": 60,
+    "activity_factors": { "default": 0.15, "high": 0.40 }
+  },
+  "coverage": {
+    "functional_pct": 100,
+    "line_pct": 95,
+    "branch_pct": 90,
+    "toggle_pct": 85,
+    "fsm_state_pct": 100,
+    "fsm_transition_pct": 95,
+    "assertion_pct": 100
+  },
+  "dft": {
+    "saf_coverage_pct": 99,
+    "transition_coverage_pct": 95,
+    "cell_aware_coverage_pct": 95,
+    "bridging_coverage_pct": 90,
+    "mbist_coverage_pct": 99,
+    "chain_balance_pct": 5
+  },
+  "hls": {
+    "target_ii": null,
+    "target_latency_cycles": null,
+    "cosim_tolerance_pct": 5
+  },
+  "fpga": {
+    "lut_util_pct_max": 70,
+    "bram_util_pct_max": 80,
+    "dsp_util_pct_max": 80
+  }
+}
+```
+
+Non-null values are **documented defaults** matching current hardcoded SKILL.md literals.
+`null` values must be supplied by the user for constraint-bearing domains.
+
+#### Required vs. optional constraints
+
+| Constraint key | Required by (hard-fail if missing/null) |
+|---|---|
+| `clock.clk_mhz` | architecture, rtl-design, synthesis, sta, pd, soc, fpga |
+| `area.area_um2` | architecture, synthesis, pd |
+| `power.power_mw` | architecture, synthesis, pd |
+| `pvt_corners` (≥1 entry with non-null `voltage_v` and `temp_c`) | sta, pd |
+| `hls.target_ii` or `hls.target_latency_cycles` (at least one non-null) | hls |
+
+All other keys are **optional** — absent keys fall back to the schema default with a WARN.
+
+#### Stage-entry constraint validation rule
+
+Every constraint-bearing domain orchestrator applies this rule at the **first stage** that
+consumes design constraints. Skip entirely when invoked in fix-request-servicing mode (a
+`fix_request.id` was passed in the prompt):
+
+1. Read `design_state.constraints`. Treat missing key as `{}`.
+2. For each key in this domain's **required** set: if missing or `null`, perform atomic RMW —
+   set `pending_approval`:
+   ```json
+   {
+     "type": "constraint_gap",
+     "stage": "<entry stage name>",
+     "agent": "<this-orchestrator>",
+     "reason": "required constraint <key> missing from design_state.constraints",
+     "fix_request_id": null,
+     "last_summary": "<comma-separated list of missing keys>",
+     "requires_user": true
+   }
+   ```
+   Append a `history[]` entry: `decision: "escalate"`, `confidence: "high"`,
+   `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`,
+   `constraint_ref: "<missing key>"`. Print the gate message and **halt**.
+3. For **optional** absent constraints: use the schema default, continue, and include a
+   fallback note in the stage's history `reason` field.
+
+**Resume path**: populate the missing constraint(s) in `design_state.constraints`, set
+`pending_approval = null`, and re-invoke the orchestrator.
+
+#### Decision tagging via `constraint_ref`
+
+In every `history[]` entry emitted after a stage that evaluates QoR against a constraint, set
+`constraint_ref` to the primary constraint key compared using dot-path notation
+(e.g. `"timing.wns_ns_target"`, `"clock.clk_mhz"`, `"area.utilization_pct_max"`).
+Comma-separate if a stage gates on multiple keys. All other history entries retain
+`constraint_ref: null`.
+
 ### format_version
 
 `design_state.json` version tiers (each tier is a superset of the previous):
 - **`"1.1"`**: `fix_requests[]` and `cross_domain_iteration_count` present.
 - **`"1.2"`**: `history[]` entries carry standardized `confidence`, `failure_class`, and `suggested_next_step` fields.
 - **`"1.3"`**: `pipeline_config.checkpoints`, `approved_checkpoints[]`, `pending_approval.type/stage/agent` present; per-stage `history[]` entries (one entry per completed stage, not just one terminal entry per run).
+- **`"1.4"`**: `constraints` object present (authoritative nested schema defined in the Constraints Schema section); stage-entry constraint validation; `pending_approval.type: "constraint_gap"`.
 
 All orchestrators must:
-- Upgrade to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; never downgrade.
-- All prior-version requirements are subsumed by `"1.3"` — no separate upgrades required.
+- Upgrade to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; never downgrade.
+- All prior-version requirements are subsumed by `"1.4"` — no separate upgrades required.
 - Treat missing `fix_requests` or `cross_domain_iteration_count` as `[]` / `0`.
 - Treat missing `confidence`, `failure_class`, or `suggested_next_step` in history entries as `null` for backward compatibility.
 - Treat missing `pipeline_config.checkpoints` as `[]` (no checkpoints — fully autonomous).
 - Treat missing `approved_checkpoints` as `[]`.
 - Treat missing `pending_approval.type` as `"escalation"` for backward compatibility.
+- Treat missing `constraints` as `{}` — apply schema defaults for all optional keys; halt on first missing required key per the Constraints Schema section.
 
 ### Approval Checkpoints
 
@@ -214,6 +334,7 @@ The `pipeline-orchestrator`'s `detect_open_fix_requests` halts on **any** non-nu
 a type-specific message:
 - `type: "checkpoint"`: "Checkpoint `<stage>` is awaiting human approval (set by `<agent>`). Approve or skip to continue."
 - `type: "escalation"`: (existing message) "Fix-request loop escalation — review required."
+- `type: "constraint_gap"`: "Stage `<stage>` is missing required constraint(s) (set by `<agent>`). Populate `design_state.constraints` and clear `pending_approval` to continue."
 
 #### Per-stage history trace (format_version 1.3)
 
