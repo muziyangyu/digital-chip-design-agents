@@ -91,6 +91,7 @@ Each stage must return:
   "status": "PASS | FAIL | WARN",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "retry_strategy": "none | regenerate | refine | escalate",
   "qor": {
     "tools_detected": 0,
     "tools_missing": 0,
@@ -111,7 +112,7 @@ Each stage must return:
 3. If max iterations exceeded: stop, present full state and escalation report
 4. Never auto-run per-tool install scripts — present them to the user for review; each MISSING tool gets its own `install-<toolname>.sh` written to `install-missing-tools/`
 5. On completion: confirm `tool-manifest.json` written, all 8 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 MCP config snippets written with resolved absolute paths and printed
-6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill (Failure Classification & Retry Strategy); `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate history entry below also includes `retry_strategy` (`none` for `await_approval`/checkpoint). When escalating, `pending_approval.reason` must state the `failure_class` plus what the user must supply to unblock. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `environment_validation` only): before setting `environment.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"environment_validation"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "environment_validation", "agent": "infrastructure-orchestrator", "reason": "checkpoint environment_validation requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: tools_detected, wrappers_deployed>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `environment.signoff=true`. On re-invocation: if `"environment_validation"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 8. Infrastructure memory (opt-in — default off): see the **Infrastructure Memory** section below. Persist tool versions and setup config to `memory/infrastructure/` **only** when `design_state.pipeline_config.track_infrastructure` is `true` or the orchestrator was invoked with `--track-memory`. When neither is set, skip all `memory/infrastructure/` reads and writes entirely — current behavior is unchanged.
 
@@ -129,7 +130,7 @@ On any termination path (signoff, escalation, abandonment, max-turns), perform a
 read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-3. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
+3. Upgrade `format_version` to `"1.5"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`, or `"1.4"`; preserve any higher version without downgrade.
 4. Merge your domain fields (below) into the top-level object.
 5. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
 6. Write to `design_state.tmp`, then rename to `design_state.json`.
@@ -155,6 +156,7 @@ History entry to append:
   "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "retry_strategy": "none | regenerate | refine | escalate",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
   "constraint_ref": null

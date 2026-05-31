@@ -57,6 +57,7 @@ Each stage must return:
   "status": "PASS | FAIL | WARN",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "retry_strategy": "none | regenerate | refine | escalate",
   "qor": {},
   "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
@@ -70,7 +71,7 @@ Each stage must return:
 3. Do not proceed to regression_signoff if any P0/P1 bugs remain open
 4. Bug found during directed tests: append a `fix_request` entry to `design_state.fix_requests[]` per the schema in the Design State section below; set `verification_status.signoff=false`; append a history entry with `decision=escalate` and `constraint_ref=<fix_request.id>`; then terminate this run. Do not retry locally — the pipeline-orchestrator owns RTL re-invocation.
 5. Read `memory/verification/knowledge.md` before the first stage. Write an experience record to `memory/verification/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
-6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill (Failure Classification & Retry Strategy); `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, `pending_approval.reason` must state the `failure_class` plus what the user must supply to unblock. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `regression_signoff` only, **unless** a `fix_request.id` was passed in the prompt — skip the gate in fix-request-servicing mode): before setting `verification_status.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"regression_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "regression_signoff", "agent": "verification-orchestrator", "reason": "checkpoint regression_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: coverage_pct, regression_failures>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `verification_status.signoff=true`. On re-invocation: if `"regression_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 8. Constraint validation (at `tb_architecture`, skip in fix-request-servicing mode): read `design_state.constraints`. No required keys for this domain — all coverage targets have schema defaults (`coverage.*`). For absent coverage keys, use schema defaults and include a fallback note in the stage `reason`. Tag `constraint_ref` in history entries when evaluating coverage QoR (e.g. `"coverage.functional_pct"`, `"coverage.line_pct"`).
 
@@ -125,7 +126,7 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Upgrade `format_version` to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; preserve any higher version without downgrade.
+4. Upgrade `format_version` to `"1.5"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`, or `"1.4"`; preserve any higher version without downgrade.
 5. Merge your domain fields (below) — merge into the existing `verification_status` object
    without overwriting `formal_signoff` if already set by the formal orchestrator.
 6. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
@@ -189,6 +190,7 @@ History entry to append:
   "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "retry_strategy": "none | regenerate | refine | escalate",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
   "constraint_ref": "<fix_request.id when escalating a bug; dot-path constraint key when evaluating coverage QoR, e.g. coverage.functional_pct; otherwise null>"

@@ -68,6 +68,7 @@ Each stage must return:
   "status": "PASS | FAIL | WARN",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "retry_strategy": "none | regenerate | refine | escalate",
   "qor": {},
   "issues": [{"severity": "ERROR|WARN", "description": "...", "fix": "..."}],
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
@@ -81,7 +82,7 @@ Each stage must return:
 3. Never proceed past a FAIL without applying the loop-back rule
 4. Output: GDS-II, sign-off STA report, DRC clean, LVS clean, power report
 5. Read `memory/pd/knowledge.md` before the first stage. Write an experience record to `memory/pd/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
-6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
+6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, `retry_strategy`, and `suggested_next_step`. Use the 10-field schema shown in the Design State section below. Derive `retry_strategy` from `failure_class` via the mapping in the pipeline-orchestration skill (Failure Classification & Retry Strategy); `failure_class: none` ⇒ `retry_strategy: none`. Every FAIL/WARN entry must carry a non-`none` `failure_class` and its mapped `retry_strategy`; the checkpoint-gate and (where present) constraint-validation history entries below also include `retry_strategy` (`none` for `await_approval`/checkpoint; `escalate` for constraint_gap). When escalating, `pending_approval.reason` must state the `failure_class` plus what the user must supply to unblock. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `signoff` only): before setting `pd.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"pd_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "pd_signoff", "agent": "physical-design-orchestrator", "reason": "checkpoint pd_signoff requires human approval before tape-out proceeds", "fix_request_id": null, "last_summary": "<QoR one-liner: WNS, DRC violations, util_pct>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `pd.signoff=true`. On re-invocation: if `"pd_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
 8. Constraint validation (at `floorplan`, skip in fix-request-servicing mode): read `design_state.constraints`. Required: `clock.clk_mhz`, `area.area_um2`, `power.power_mw`; `pvt_corners` with at least one entry having non-null `voltage_v` and `temp_c`. For each missing required key, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "floorplan", "agent": "physical-design-orchestrator", "reason": "required constraint <key> missing from design_state.constraints", "fix_request_id": null, "last_summary": "<comma-separated missing keys>", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "<missing key>"`, and halt. For optional absent constraints (utilization targets, IR drop, leakage, skew, fanout), use schema defaults and include a fallback note in the stage `reason`. Tag `constraint_ref` when evaluating PPA QoR (e.g. `"area.utilization_pct_max"`, `"power.ir_drop_pct_max"`).
 
@@ -157,7 +158,7 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Upgrade `format_version` to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; preserve any higher version without downgrade.
+4. Upgrade `format_version` to `"1.5"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`, or `"1.4"`; preserve any higher version without downgrade.
 5. Merge your domain fields (below) into the top-level object.
 6. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
 7. Write to `design_state.tmp`, then rename to `design_state.json`.
@@ -186,6 +187,7 @@ History entry to append:
   "decision": "proceed | escalate | abandoned | await_approval",
   "confidence": "high | medium | low",
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
+  "retry_strategy": "none | regenerate | refine | escalate",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
   "constraint_ref": "<dot-path constraint key or null, e.g. area.utilization_pct_max>"

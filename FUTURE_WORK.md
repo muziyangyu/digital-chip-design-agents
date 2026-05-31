@@ -180,11 +180,22 @@ leverages the memory system already in place.
 
 **Prerequisite:** item 5.
 
-## 10. Structured Failure Handling
+## ~~10. Structured Failure Handling~~ ✓ DONE (format_version 1.5)
 
-All failures currently land in the same `issues[]` array with only `ERROR | WARN`
+Implemented in format_version 1.5: every `history[]` entry carries a `retry_strategy`
+(`regenerate | refine | escalate | none`) deterministically mapped from `failure_class` via the
+authoritative table in `plugins/meta/skills/pipeline-orchestration/SKILL.md` § Failure
+Classification & Retry Strategy. The mapping reuses the existing 10-value `failure_class` enum —
+the four classes proposed below are reconciled as documented aliases (`invalid_rtl` →
+`tool_error`/regenerate, `verification_failure` → `functional`/refine, `interface_mismatch` →
+`connectivity`/refine, `incomplete_spec` → `spec_gap`/escalate). The pipeline-orchestrator
+decision table branches on `retry_strategy`, and escalations include the `failure_class` plus a
+plain-language description of what the user must supply. All 14 history-writing orchestrators,
+the example fixtures, and CI (`validate.yml`) were updated.
+
+~~All failures currently land in the same `issues[]` array with only `ERROR | WARN`
 severity. Orchestrators apply hardcoded loop-back rules per stage but have no
-structured way to distinguish a recoverable code error from an ambiguous spec.
+structured way to distinguish a recoverable code error from an ambiguous spec.~~
 
 **Failure class taxonomy** (maps to `failure_class` field from item 7):
 
