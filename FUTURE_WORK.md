@@ -130,25 +130,19 @@ Shipped schema (replaces the old `recommendation` field):
 pipeline-orchestrator. `failure_class` feeds the retry strategy table. `suggested_next_step`
 supersedes the old `recommendation` string and makes orchestration logic programmatic.
 
-## 8. Constraint Awareness
+## ~~8. Constraint Awareness~~ ✓ DONE (format_version 1.4)
 
-Constraints currently live as prose in SKILL.md files or as file paths (SDC, LEF) in
+~~Constraints currently live as prose in SKILL.md files or as file paths (SDC, LEF) in
 orchestrator state. Agents embed constraint values in their rules rather than reading them
-from a shared source, so a change to the clock target requires editing multiple skill files.
+from a shared source, so a change to the clock target requires editing multiple skill files.~~
 
-**Agent Behavior Changes:**
-
-- On stage entry, read `design_state.constraints` (item 5) and fail fast if required
-  constraints are absent rather than assuming defaults silently.
-- Tag each design decision with the constraint it satisfies, e.g.:
-  `"meets_constraint": "clk_core ≥ 500 MHz"`.
-- If a constraint cannot be met, set `failure_class: interface_mismatch` or
-  `incomplete_spec` (item 10) and halt rather than producing a non-compliant output.
-
-**Affected domains:** architecture, RTL, synthesis, STA, PD — all have timing/area
-targets that are currently hardcoded in skill rules.
-
-**Prerequisite:** item 5.
+Implemented in format_version 1.4: `design_state.constraints` is the single source of truth
+for all design constraint values. All 11 constraint-bearing domain SKILL.md files now reference
+`design_state.constraints.<key>` instead of hardcoded literals (retained as documented defaults).
+Stage-entry validation halts with `pending_approval.type: "constraint_gap"` when required keys
+are missing. `constraint_ref` in `history[]` entries tags every QoR decision against the
+constraint key it evaluated. See `plugins/meta/skills/pipeline-orchestration/SKILL.md`
+§ Constraints Schema and `CHANGELOG.md` for full details.
 
 ## 9. Architecture Exploration Improvement
 
