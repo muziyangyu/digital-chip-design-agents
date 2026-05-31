@@ -49,6 +49,7 @@ Valid domain names match the subdirectories under `memory/`:
 | `formal` | `memory/formal/experiences.jsonl` |
 | `fpga` | `memory/fpga/experiences.jsonl` |
 | `hls` | `memory/hls/experiences.jsonl` |
+| `infrastructure` | `memory/infrastructure/experiences.jsonl` (opt-in; env-keyed) |
 | `pd` | `memory/pd/experiences.jsonl` |
 | `rtl-design` | `memory/rtl-design/experiences.jsonl` |
 | `soc` | `memory/soc/experiences.jsonl` |

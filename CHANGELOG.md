@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] — feat/infrastructure-memory branch
+
+### Added
+
+- **Infrastructure orchestrator memory** (FUTURE_WORK item 4): opt-in, environment-keyed persistent tracking of tool versions and setup configuration under `memory/infrastructure/`, following the existing two-tier memory pattern (`knowledge.md` + `experiences.jsonl`).
+  - **Opt-in, default off**: the infrastructure-orchestrator reads/writes `memory/infrastructure/` only when `design_state.pipeline_config.track_infrastructure == true` or it is invoked with `--track-memory`. When unset, no `memory/infrastructure/` I/O occurs — prior (memory-free) behavior is unchanged. This respects the original deferral rationale (infra state is environment-specific; lockfiles remain the primary version source of truth).
+  - **Environment-keyed records**: each `experiences.jsonl` record carries an `environment` fingerprint (`host`, `os`, `os_version`, `arch`) and a `key_metrics.tool_versions` per-tool version map captured at `environment_validation` — the core value-add for diagnosing repeated version-mismatch debugging across sessions. Records are differentiated by environment, not by design (`design_name` is typically `null`).
+  - **Seeded `memory/infrastructure/knowledge.md`**: Tier-2 summary with known env-mismatch failure patterns (e.g. Verilator < 5.0 lacks `--timing`, OpenROAD nightly vs release ABI drift, module-unload python3 fallback), successful flags/install notes, and tool quirks.
+  - **Full memory-keeper integration**: `infrastructure` registered in `distill.py` `VALID_DOMAINS` and `METRIC_FIELDS` (`tools_detected`, `tools_missing`, `wrappers_deployed`, `mcp_servers_configured`) and added to the memory-keeper SKILL Domains table, so infrastructure quirks distil into `knowledge.md` via `/chip-design-infrastructure:memory-keeper --domain infrastructure`.
+
+### Changed
+
+- **`memory/README.md`**: added `infrastructure/` to the Directory Layout, an `infrastructure` row to the Domain key_metrics Fields table, and a new "Infrastructure memory (opt-in, environment-keyed)" subsection documenting the activation flag and env-keyed records.
+- **`infrastructure-orchestrator.md`**: added Behaviour Rule 8 and an "Infrastructure Memory" section specifying the activation gate, session-start read, post-`environment_validation` upsert, and the environment-keyed record schema.
+
 ## [Unreleased] — feat/central-constraint-handling branch
 
 ### Added

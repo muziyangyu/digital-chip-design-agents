@@ -46,6 +46,7 @@ tool flags, and PDK/tool quirks. Intended to be periodically updated by a memory
 | formal       | `proved`, `failed`, `unknown`                                         |
 | fpga         | `lut_count`, `fmax_mhz`, `timing_met`                                |
 | hls          | `latency_cycles`, `dsp_count`, `ii_achieved`                         |
+| infrastructure | `tools_detected`, `tools_missing`, `wrappers_deployed`, `mcp_servers_configured`, `module_system`, `tool_versions` |
 | pd           | `wns_ns`, `drc_violations`, `lvs_errors`, `gds_area_um2`            |
 | rtl-design   | `lint_errors`, `cdc_violations`, `synth_check_pass`                  |
 | soc          | `ip_blocks_integrated`, `simulation_pass`, `memory_map_conflicts`    |
@@ -70,6 +71,7 @@ memory/
 ├── formal/
 ├── fpga/
 ├── hls/
+├── infrastructure/             ← opt-in, environment-keyed (see note below)
 ├── pd/
 ├── rtl-design/
 ├── soc/
@@ -77,6 +79,19 @@ memory/
 ├── synthesis/
 └── verification/
 ```
+
+### Infrastructure memory (opt-in, environment-keyed)
+
+The `infrastructure` domain is **opt-in**: the infrastructure-orchestrator writes an
+`experiences.jsonl` record only when `design_state.pipeline_config.track_infrastructure` is
+`true` (or it is invoked with `--track-memory`). Default is off — infrastructure state is
+environment-specific and lockfiles remain the primary version source of truth, so memory is
+written only when tool-version mismatches have caused repeated cross-session debugging.
+
+When enabled, each record carries an `environment` fingerprint (`host`, `os`, `os_version`,
+`arch`) and a `key_metrics.tool_versions` map. Records are **environment-keyed**: prefer entries
+whose `environment.host`/`os` matches the current machine, since versions and quirks do not
+transfer across hosts.
 
 ## Design State
 

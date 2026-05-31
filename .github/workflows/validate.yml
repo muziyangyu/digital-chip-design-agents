@@ -336,3 +336,39 @@ jobs:
               sys.exit(1)
           print("IDE config files OK")
           PYEOF
+
+      - name: Validate infrastructure memory integration
+        run: |
+          python3 << 'PYEOF'
+          import os, sys, importlib.util
+          errors = []
+
+          # Seeded Tier-2 knowledge file must exist (experiences.jsonl is created on first run)
+          kb = "memory/infrastructure/knowledge.md"
+          if not os.path.isfile(kb):
+              errors.append(f"Missing: {kb}")
+          elif os.path.getsize(kb) == 0:
+              errors.append(f"{kb}: file is empty")
+          else:
+              print(f"OK: {kb}")
+
+          # distill.py must register the infrastructure domain
+          distill_path = "plugins/infrastructure/skills/memory-keeper/distill.py"
+          if not os.path.isfile(distill_path):
+              errors.append(f"Missing: {distill_path}")
+          else:
+              spec = importlib.util.spec_from_file_location("distill", distill_path)
+              mod = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(mod)
+              if "infrastructure" not in mod.VALID_DOMAINS:
+                  errors.append("distill.py VALID_DOMAINS missing 'infrastructure'")
+              elif "infrastructure" not in mod.METRIC_FIELDS:
+                  errors.append("distill.py METRIC_FIELDS missing 'infrastructure'")
+              else:
+                  print(f"OK: distill.py registers infrastructure ({mod.METRIC_FIELDS['infrastructure']})")
+
+          if errors:
+              for e in errors: print(f"ERROR: {e}", file=sys.stderr)
+              sys.exit(1)
+          print("Infrastructure memory integration OK")
+          PYEOF

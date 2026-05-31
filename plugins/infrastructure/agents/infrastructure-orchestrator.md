@@ -113,6 +113,7 @@ Each stage must return:
 5. On completion: confirm `tool-manifest.json` written, all 8 wrappers executable, `mcp-adapter.py` and `mcp-session-adapter.py` present, and all 10 MCP config snippets written with resolved absolute paths and printed
 6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `environment_validation` only): before setting `environment.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"environment_validation"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "environment_validation", "agent": "infrastructure-orchestrator", "reason": "checkpoint environment_validation requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: tools_detected, wrappers_deployed>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `environment.signoff=true`. On re-invocation: if `"environment_validation"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
+8. Infrastructure memory (opt-in — default off): see the **Infrastructure Memory** section below. Persist tool versions and setup config to `memory/infrastructure/` **only** when `design_state.pipeline_config.track_infrastructure` is `true` or the orchestrator was invoked with `--track-memory`. When neither is set, skip all `memory/infrastructure/` reads and writes entirely — current behavior is unchanged.
 
 ## Design State
 
@@ -159,3 +160,66 @@ History entry to append:
   "constraint_ref": null
 }
 ```
+
+## Infrastructure Memory (opt-in)
+
+Persistent tool-version and setup-config tracking under `memory/infrastructure/`, following the
+two-tier memory pattern in `memory/README.md`. This is **disabled by default** — infrastructure
+state is environment-specific and lockfiles are the primary version source of truth. Enable it
+only when tool-version mismatches have caused repeated cross-session debugging.
+
+### Activation
+Tracking is enabled when **either** is true:
+- `design_state.pipeline_config.track_infrastructure == true`, or
+- the orchestrator was invoked with the `--track-memory` flag.
+
+If neither is set, **skip this entire section** — perform no `memory/infrastructure/` reads or
+writes. This preserves the default (memory-free) behavior exactly.
+
+### Read (session start, if enabled)
+Read `memory/infrastructure/knowledge.md` for known setup quirks and version-mismatch patterns;
+prefer entries whose environment fingerprint matches the current host. Read
+`memory/infrastructure/run_state.md` if resuming an interrupted setup.
+
+### Write (after `environment_validation`, if enabled)
+Upsert one record (create-or-replace by `run_id`) into `memory/infrastructure/experiences.jsonl`
+using the atomic read-modify-write protocol in `memory/README.md`. Records are
+**environment-keyed** so cross-machine data never collides. `design_name` is typically `null`
+(infrastructure is design-independent). Populate `key_metrics.tool_versions` from the `FOUND`
+entries in `tool-status.json` — this per-tool version map is the primary value-add for
+version-mismatch debugging.
+
+```json
+{
+  "run_id": "infrastructure_<YYYYMMDD>_<HHMMSS>",
+  "timestamp": "<ISO-8601>",
+  "domain": "infrastructure",
+  "design_name": null,
+  "pdk": "<from state if known, else null>",
+  "tool_used": "infrastructure-orchestrator",
+  "environment": {
+    "host": "<from environment>",
+    "os": "linux | darwin | win32",
+    "os_version": "<uname / ver string>",
+    "arch": "x86_64 | arm64"
+  },
+  "stages_completed": ["tool_discovery", "module_discovery", "tool_installation", "wrapper_deployment", "mcp_configuration", "environment_validation"],
+  "loop_backs": {},
+  "key_metrics": {
+    "tools_detected": 0,
+    "tools_missing": 0,
+    "wrappers_deployed": 0,
+    "mcp_servers_configured": 0,
+    "module_system": "tclmod | none",
+    "tool_versions": { "yosys": "0.36", "verilator": "5.028" }
+  },
+  "issues_encountered": [],
+  "fixes_applied": [],
+  "signoff_achieved": false,
+  "notes": ""
+}
+```
+
+Set `signoff_achieved: true` only on a clean `environment_validation` PASS. Distillation of these
+records into `knowledge.md` is handled by the `memory-keeper` skill
+(`/chip-design-infrastructure:memory-keeper --domain infrastructure`).
