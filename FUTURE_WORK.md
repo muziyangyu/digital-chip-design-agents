@@ -52,16 +52,28 @@ python3 tools/qor_trends.py --design aes_core --domain synthesis --metric wns_ns
 python3 tools/qor_trends.py --design aes_core --plot --output aes_core_qor.png
 ```
 
-## 4. Infrastructure Orchestrator Memory
+## 4. Infrastructure Orchestrator Memory ✓ IMPLEMENTED
 
-Track tool versions, install paths, and MCP configuration choices across setups in
-`memory/infrastructure/`. Deferred because:
+**Status:** Shipped — `memory/infrastructure/` + infrastructure-orchestrator opt-in memory rule.
 
-- Infrastructure state is environment-specific (machine A ≠ machine B)
-- The value is lower than domain memory — tool version is better tracked in a lockfile
-- MCP configuration is already stored in `.claude/settings.json`
+Track tool versions, module versions, and MCP/setup configuration across runs in
+`memory/infrastructure/`, following the two-tier memory pattern. Because the original deferral
+rationale still holds — infrastructure state is environment-specific (machine A ≠ machine B),
+tool versions are better pinned in a lockfile, and MCP config lives in `.claude/settings.json` —
+tracking is **opt-in and default off**:
 
-Revisit if tool version mismatches cause repeated debugging across sessions.
+- Enabled only when `design_state.pipeline_config.track_infrastructure == true` or the
+  orchestrator is invoked with `--track-memory`; otherwise no `memory/infrastructure/` I/O occurs.
+- Records are **environment-keyed** (`environment` fingerprint: `host`, `os`, `os_version`,
+  `arch`) so cross-machine data never collides.
+- `key_metrics.tool_versions` captures a per-tool version map at `environment_validation` — the
+  primary value-add for diagnosing repeated version-mismatch debugging across sessions.
+- Fully integrated with `memory-keeper`: `infrastructure` is registered in `distill.py`
+  `VALID_DOMAINS`/`METRIC_FIELDS` and the SKILL Domains table, so quirks distil into
+  `memory/infrastructure/knowledge.md` over time.
+
+See `memory/README.md` § "Infrastructure memory (opt-in, environment-keyed)" and the
+infrastructure-orchestrator § "Infrastructure Memory" for full details.
 
 ## 5. Central "Design" State ✓ IMPLEMENTED
 
