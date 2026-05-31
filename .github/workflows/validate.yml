@@ -158,7 +158,7 @@ jobs:
               sys.exit(1)
           d = json.load(open(fixture_path))
           errors = []
-          VALID_FORMAT_VERSIONS = {"1.1", "1.2", "1.3"}
+          VALID_FORMAT_VERSIONS = {"1.1", "1.2", "1.3", "1.4"}
           if d.get("format_version") not in VALID_FORMAT_VERSIONS:
               errors.append(f"format_version must be one of {sorted(VALID_FORMAT_VERSIONS)}, got {d.get('format_version')!r}")
           VALID_CONFIDENCE = {"high", "medium", "low"}
@@ -198,8 +198,8 @@ jobs:
                               errors.append(f"approved_checkpoints[{i}] must be an object with 'stage'")
               pa = d.get("pending_approval")
               if pa is not None:
-                  if pa.get("type") not in {"checkpoint", "escalation"}:
-                      errors.append(f"pending_approval.type must be 'checkpoint' or 'escalation', got {pa.get('type')!r}")
+                  if pa.get("type") not in {"checkpoint", "escalation", "constraint_gap"}:
+                      errors.append(f"pending_approval.type must be 'checkpoint', 'escalation', or 'constraint_gap', got {pa.get('type')!r}")
           if not isinstance(d.get("fix_requests"), list) or not d["fix_requests"]:
               errors.append("fix_requests must be a non-empty array in the fixture")
           if not isinstance(d.get("pipeline_config"), dict):
@@ -232,23 +232,23 @@ jobs:
           cerrors = []
           if c.get("format_version") not in VALID_FORMAT_VERSIONS:
               cerrors.append(f"format_version must be one of {sorted(VALID_FORMAT_VERSIONS)}, got {c.get('format_version')!r}")
-          if c.get("format_version") == "1.3":
+          if c.get("format_version") in {"1.3", "1.4"}:
               pc = c.get("pipeline_config", {})
               if not isinstance(pc.get("checkpoints"), list):
-                  cerrors.append("pipeline_config.checkpoints must be a list in 1.3 fixture")
+                  cerrors.append("pipeline_config.checkpoints must be a list in 1.3/1.4 fixture")
               ac = c.get("approved_checkpoints")
               if ac is None or not isinstance(ac, list):
-                  cerrors.append("approved_checkpoints must be a list in 1.3 fixture")
+                  cerrors.append("approved_checkpoints must be a list in 1.3/1.4 fixture")
               else:
                   for i, entry in enumerate(ac):
                       if not isinstance(entry, dict) or "stage" not in entry:
                           cerrors.append(f"approved_checkpoints[{i}] must have 'stage'")
               pa = c.get("pending_approval")
-              if pa is not None and pa.get("type") not in {"checkpoint", "escalation"}:
+              if pa is not None and pa.get("type") not in {"checkpoint", "escalation", "constraint_gap"}:
                   cerrors.append(f"pending_approval.type invalid: {pa.get('type')!r}")
               hist = c.get("history", [])
               if not isinstance(hist, list) or len(hist) == 0:
-                  cerrors.append("history[] must be a non-empty list in 1.3 fixture")
+                  cerrors.append("history[] must be a non-empty list in 1.3/1.4 fixture")
               else:
                   for i, h in enumerate(hist):
                       if not isinstance(h, dict): continue
@@ -259,6 +259,18 @@ jobs:
                       sns = h.get("suggested_next_step")
                       if not (isinstance(sns, str) and (sns in VALID_NEXT_STEP or sns.startswith("loop_back_to:"))):
                           cerrors.append(f"history[{i}].suggested_next_step invalid: {sns!r}")
+          if c.get("format_version") == "1.4":
+              constraints = c.get("constraints")
+              if constraints is not None:
+                  if not isinstance(constraints, dict):
+                      cerrors.append("constraints must be an object in 1.4 fixture")
+                  else:
+                      clk = constraints.get("clock", {})
+                      if clk.get("clk_mhz") is not None and not isinstance(clk["clk_mhz"], (int, float)):
+                          cerrors.append("constraints.clock.clk_mhz must be a number or null")
+                      pvt = constraints.get("pvt_corners")
+                      if pvt is not None and not isinstance(pvt, list):
+                          cerrors.append("constraints.pvt_corners must be an array or null")
           if cerrors:
               for e in cerrors: print(f"ERROR (checkpoint fixture): {e}", file=sys.stderr)
               sys.exit(1)

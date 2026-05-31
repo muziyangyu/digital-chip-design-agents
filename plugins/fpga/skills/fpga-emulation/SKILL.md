@@ -102,14 +102,14 @@ provides functional and architectural validation months before silicon.
 ## Stage: partitioning
 
 ### Domain Rules
-1. Target utilisation per FPGA: < 70% LUT (leave room for ILA debug cores)
+1. Target utilisation per FPGA: < `design_state.constraints.fpga.lut_util_pct_max`% LUT (default: 70%) — leave room for ILA debug cores
 2. Minimise inter-FPGA signal count — each signal uses a physical connector pin
 3. Never cut timing-critical paths at partition boundaries
 4. Keep complete clock domains within a single FPGA wherever possible
 5. Inter-FPGA: Aurora or GTH SERDES for high-speed; GPIO for slow control
 
 ### QoR Metrics to Evaluate
-- Per-FPGA: LUT < 70%, BRAM < 80%, DSP < 80%
+- Per-FPGA: LUT < `design_state.constraints.fpga.lut_util_pct_max`% (default: 70%), BRAM < `design_state.constraints.fpga.bram_util_pct_max`% (default: 80%), DSP < `design_state.constraints.fpga.dsp_util_pct_max`% (default: 80%)
 - Inter-FPGA signal count: within connector pin budget
 - No clock domain split without explicit bridge
 
@@ -125,9 +125,9 @@ provides functional and architectural validation months before silicon.
 ### Domain Rules
 1. Full Vivado (Xilinx) or Quartus (Intel) flow:
    synth → opt → place → route → phys_opt → bitstream
-2. Timing target: WNS ≥ 0 at prototype frequency
+2. Timing target: WNS ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) at prototype frequency
 3. If WNS < 0: reduce frequency first; add pipeline registers second
-4. Utilisation targets: LUT < 70%, BRAM < 80%, DSP < 80%
+4. Utilisation targets: LUT < `design_state.constraints.fpga.lut_util_pct_max`% (default: 70%), BRAM < `design_state.constraints.fpga.bram_util_pct_max`% (default: 80%), DSP < `design_state.constraints.fpga.dsp_util_pct_max`% (default: 80%)
 
 ### Debug Infrastructure (add before bitstream)
 - ILA: up to 64 probes per core; trigger on errors or key FSM states
@@ -144,8 +144,8 @@ provides functional and architectural validation months before silicon.
 | phys_opt –directive AggressiveExplore | Last resort |
 
 ### QoR Metrics to Evaluate
-- WNS ≥ 0 at prototype frequency
-- LUT < 70%, BRAM < 80%, DSP < 80%
+- WNS ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) at prototype frequency
+- LUT < `design_state.constraints.fpga.lut_util_pct_max`% (default: 70%), BRAM < `design_state.constraints.fpga.bram_util_pct_max`% (default: 80%), DSP < `design_state.constraints.fpga.dsp_util_pct_max`% (default: 80%)
 - Bitstream: no critical DRC errors
 - ILA: configured on key debug signals
 
@@ -243,6 +243,21 @@ provides functional and architectural validation months before silicon.
 - Bug report for RTL team (HW bugs with ILA evidence)
 - Performance baseline document
 - Prototype user guide for SW development team
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`rtl_adaptation`) — hard-fail if missing:**
+- `constraints.clock.clk_mhz` — ASIC target clock frequency; used to compute FPGA prototype frequency scale-down ratio
+
+**Optional (schema defaults apply when absent):**
+- `constraints.timing.wns_ns_target` (default: 0) — WNS closure threshold at prototype frequency
+- `constraints.fpga.lut_util_pct_max` (default: 70) — per-FPGA LUT utilisation ceiling %
+- `constraints.fpga.bram_util_pct_max` (default: 80) — per-FPGA BRAM utilisation ceiling %
+- `constraints.fpga.dsp_util_pct_max` (default: 80) — per-FPGA DSP utilisation ceiling %
 
 ---
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased] — feat/central-constraint-handling branch
+
+### Added
+
+- **Dynamic constraint loading from `design_state.constraints`** (FUTURE_WORK item 8): `design_state.constraints` is now the single source of truth for all design constraint values — clock target, area/power budgets, timing sign-off thresholds (WNS/TNS), utilisation targets, IR-drop limits, leakage budget, coverage targets, fault-coverage targets, HLS II/latency, and FPGA resource limits. All 11 constraint-bearing domain SKILL.md files now reference constraint keys (e.g. `design_state.constraints.timing.wns_ns_target`) instead of hardcoded literals; the literals are retained as documented defaults for backward compatibility.
+- **Comprehensive `constraints` schema (`format_version "1.4"`)**: authoritative schema defined once in `plugins/meta/skills/pipeline-orchestration/SKILL.md` under `### Constraints Schema`. Nested by category: `clock`, `pvt_corners[]`, `timing`, `area`, `power`, `coverage`, `dft`, `hls`, `fpga`. All non-null defaults match the literals previously hardcoded in SKILL.md files.
+- **Stage-entry constraint validation** (hard-fail on missing required constraints): every constraint-bearing orchestrator now reads `design_state.constraints` at its entry stage and, for each key in its required subset, performs an atomic RMW to set `pending_approval.type = "constraint_gap"` and halts when the key is missing or null. Optional constraints fall back to schema defaults with a WARN history entry. Required subsets: `clock.clk_mhz` (architecture, rtl-design, synthesis, sta, pd, soc, fpga); `area.area_um2` + `power.power_mw` (architecture, synthesis, pd); `pvt_corners` with non-null V/T (sta, pd); at least one of `hls.target_ii` or `hls.target_latency_cycles` (hls).
+- **`pending_approval.type: "constraint_gap"`**: new discriminator value for the existing `pending_approval` mechanism. Pipeline-orchestrator prints a type-specific message directing the user to populate the missing constraint keys and clear `pending_approval` to resume.
+- **`constraint_ref` tagging**: `history[]` entries now carry the dot-path constraint key compared at each QoR evaluation step (e.g. `"timing.wns_ns_target"`, `"power.power_mw"`, `"clock.clk_mhz"`), making every stage decision traceable to the constraint that gated it.
+- **Updated `design_state.checkpoint.json` example**: `format_version` bumped to `"1.4"`, full `constraints` block added for `example_dsp_core` (500 MHz, 28nm), and `constraint_ref` set to real dot-path keys on `perf_modelling` (`"power.power_mw"`), `power_area_estimation`, `module_planning` (`"clock.clk_mhz"`), and `synth_check` (`"timing.wns_ns_target"`) history entries.
+
+### Changed
+
+- **`format_version "1.4"`**: new capability tier covering the full `constraints` object, stage-entry constraint validation, and `pending_approval.type: "constraint_gap"`. All 15 orchestrators upgrade to `"1.4"` on first write; prior-version files remain readable (`constraints` absent → apply schema defaults; missing `pending_approval.type` → treat as `"escalation"`).
+- **Architecture orchestrator** (`architecture-orchestrator.md`): expanded `constraints` stub from `{clk_mhz, area_um2, power_mw}` to the full nested schema; added Behaviour Rule 8 (populate constraints during `spec_analysis`) and Behaviour Rule 9 (hard-fail if required keys remain null after extraction).
+- **All 11 domain SKILL.md files** updated: `### QoR Metrics` and constraint-bearing `### Domain Rules` sections reworded to reference `design_state.constraints.<key>` with the prior literal as a documented default; each file gained a `## Constraint Validation` section listing the domain's required and optional keys.
+- **`formal` and `dft` orchestrators**: `constraints` added to Design State Read extract list (was previously missing).
+- **CI**: no schema-validation changes required — the edits are to tracked `.md` and `.json` files already covered by the existing lint checks.
+
+---
+
 ## [Unreleased] — feat/approval-gates-traceability branch
 
 ### Added

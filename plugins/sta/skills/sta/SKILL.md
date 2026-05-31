@@ -113,11 +113,17 @@ setup/hold violations are found.
 ## Stage: multi_corner_analysis
 
 ### Required Corner Matrix
+Corners are driven by `design_state.constraints.pvt_corners[]`. The table below shows the
+default corners used when `pvt_corners` is absent or contains no entries with non-null V/T:
+
 | Mode | Setup Corner | Hold Corner |
 |------|-------------|-------------|
-| Functional | SS/0.9V/125°C | FF/1.1V/−40°C |
-| Test (at-speed) | SS/0.9V/125°C | FF/1.1V/25°C |
-| Low Power | SS/0.9V/125°C | FF/1.1V/25°C |
+| Functional | SS/0.9V/125°C (default) | FF/1.1V/−40°C (default) |
+| Test (at-speed) | SS/0.9V/125°C (default) | FF/1.1V/25°C (default) |
+| Low Power | SS/0.9V/125°C (default) | FF/1.1V/25°C (default) |
+
+When `pvt_corners` is populated, use every entry with `"checks": ["setup"]` for setup and
+every entry with `"checks": ["hold"]` for hold; the defaults above are the fallback.
 
 ### POCV/AOCV Application
 1. AOCV: apply depth and location-based derating (pre-POCV designs)
@@ -133,10 +139,10 @@ setup/hold violations are found.
 ### QoR Metrics — Sign-off Targets
 | Metric | Target |
 |--------|--------|
-| Setup WNS | ≥ 0 all corners |
-| Setup TNS | = 0 all corners |
-| Hold WNS | ≥ 0 all corners |
-| Hold TNS | = 0 all corners |
+| Setup WNS | ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) all corners |
+| Setup TNS | = `design_state.constraints.timing.tns_ns_target` (default: 0) all corners |
+| Hold WNS | ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) all corners |
+| Hold TNS | = `design_state.constraints.timing.tns_ns_target` (default: 0) all corners |
 
 ### Output Required
 - Timing report per corner (setup and hold)
@@ -233,10 +239,10 @@ Hold violation:
 ## Stage: sta_signoff
 
 ### Sign-off Checklist
-- [ ] Setup WNS ≥ 0 at all corners
-- [ ] Setup TNS = 0 at all corners
-- [ ] Hold WNS ≥ 0 at all corners
-- [ ] Hold TNS = 0 at all corners
+- [ ] Setup WNS ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) at all corners
+- [ ] Setup TNS = `design_state.constraints.timing.tns_ns_target` (default: 0) at all corners
+- [ ] Hold WNS ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) at all corners
+- [ ] Hold TNS = `design_state.constraints.timing.tns_ns_target` (default: 0) at all corners
 - [ ] All exceptions valid and documented
 - [ ] POCV/AOCV applied per foundry spec
 - [ ] LEC clean post all ECOs
@@ -245,6 +251,23 @@ Hold violation:
 - Sign-off timing report (all corners, all modes)
 - ECO change summary
 - Timing sign-off record
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`constraint_validation`) — hard-fail if missing:**
+- `constraints.clock.clk_mhz` — clock frequency used to interpret timing results
+- `constraints.pvt_corners` — at least one entry with non-null `voltage_v` and `temp_c`; missing or invalid entries should hard-fail during `constraint_validation`
+
+**Optional (schema defaults apply when absent):**
+- `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off threshold
+- `constraints.timing.tns_ns_target` (default: 0) — TNS sign-off threshold
+- `constraints.timing.skew_ps_max` (default: 100) — CTS skew limit
+- `constraints.timing.transition_ps_max` (default: 200) — max clock transition
+- `constraints.timing.insertion_delay_ps_max` (default: 500) — max insertion delay
 
 ---
 

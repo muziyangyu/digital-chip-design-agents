@@ -28,6 +28,7 @@ detect_open_fix_requests → dispatch_to_producer → await_completion → re_ve
 ### detect_open_fix_requests
 First, read `design_state.json` and check if `pending_approval` is non-null. If so, print a type-specific message and exit without dispatching:
 - `type: "checkpoint"`: "Checkpoint `<pending_approval.stage>` is awaiting human approval (set by `<pending_approval.agent>`). Approve or skip to continue — see pipeline-orchestration skill for resume paths."
+- `type: "constraint_gap"`: "Stage `<pending_approval.stage>` is missing required constraint(s) (set by `<pending_approval.agent>`). Populate `design_state.constraints` and clear `pending_approval` to continue."
 - `type: "escalation"` (or absent — backward compatibility): print the prior escalation summary.
 The user must clear `pending_approval` (set to `null`) before re-invoking; for escalation type also reset `cross_domain_iteration_count` to 0.
 Read `design_state.json`. Collect all entries in `fix_requests[]` with `status=open`.
@@ -146,14 +147,14 @@ Create the file and parent directories if they do not exist.
 `design_state.json` in the working directory is the shared cross-orchestrator state file.
 
 ### Read (session start)
-Read `design_state.json`. Extract: `fix_requests`, `cross_domain_iteration_count`, `pending_approval`, `pipeline_session_id`, `pipeline_config`, `approved_checkpoints`.
+Read `design_state.json`. Extract: `fix_requests`, `cross_domain_iteration_count`, `pending_approval`, `pipeline_session_id`, `pipeline_config`, `approved_checkpoints`, `constraints`.
 Treat missing keys as empty/zero/null. Do not fail if the file is absent.
 
 ### Write (session end)
 Atomic read-modify-write of `design_state.json`:
 1. Read the file or start from `{}`.
 2. Set `updated_at` to now.
-3. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
+3. Upgrade `format_version` to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; preserve any higher version without downgrade.
 4. Update `cross_domain_iteration_count`.
 5. Update `pipeline_session_id` (set on session start; set to null on success signoff).
 6. Write `pipeline_config` if absent (default: `{ "max_cross_domain_iterations": 3 }`); never overwrite a user-supplied value.

@@ -106,7 +106,7 @@ and synthesis handoff.
 1. No delays (#) in RTL — simulation only
 2. No initial blocks in ASIC RTL
 3. Use `unique case` with explicit don't-cares instead of casez/casex
-4. Flag any net with fanout > 32 for buffering intent review
+4. Flag any net with fanout > `design_state.constraints.timing.fanout_max` (default: 32) for buffering intent review
 5. No combinational loops — will cause synthesis errors
 6. Pipeline registers: clearly marked with `_q` suffix at each stage
 
@@ -124,13 +124,9 @@ clear error directing the user to notify upstream packaging.** For non-orchestra
 RTL-only runs, classify domains using toggle-count estimates from Verilator simulation as
 a fallback.
 
-1. **High gating opportunity domains** (α < 0.15 from architecture, or toggle rate < 15%
-   from Verilator): insert an ICG cell (`CLKGATETST_X*` or technology-equivalent) at the
-   outermost clock enable boundary. Do not rely on synthesis to infer clock gates — explicit
-   ICG insertion at RTL is required.
-2. **Moderate gating opportunity domains** (0.15 ≤ α < 0.40): insert ICG at the
-   sub-block level for any register file or datapath wider than 32 bits.
-3. **Always-on domains** (α ≥ 0.40, or documented as always-on in architecture hand-off):
+1. **High gating opportunity domains** (α < `design_state.constraints.power.activity_factors.default` (default: 0.15) from architecture, or toggle rate below that threshold from Verilator): insert an ICG cell (`CLKGATETST_X*` or technology-equivalent) at the outermost clock enable boundary. Do not rely on synthesis to infer clock gates — explicit ICG insertion at RTL is required.
+2. **Moderate gating opportunity domains** (`activity_factors.default` ≤ α < `activity_factors.high` (defaults: 0.15–0.40)): insert ICG at the sub-block level for any register file or datapath wider than 32 bits.
+3. **Always-on domains** (α ≥ `activity_factors.high` (default: 0.40), or documented as always-on in architecture hand-off):
    no ICG required; add a `/* always-on: <reason> */` comment at the clock port declaration.
 4. ICG enable signal: must be registered (setup-timing safe); combinational enable
    is a lint error.
@@ -219,7 +215,7 @@ a fallback.
 7. Verify all clock definitions synthesise correctly
 
 ### QoR Metrics to Evaluate
-- WNS at target frequency: > −0.5 ns acceptable at this stage
+- WNS at target frequency: > −0.5 ns acceptable at this stage (sign-off target: `design_state.constraints.timing.wns_ns_target`, default: 0)
 - Area: < 120% of microarch estimate
 - No unmapped cells
 - No multi-driven nets
@@ -245,7 +241,7 @@ a fallback.
 - [ ] File list and compile order documented
 - [ ] ICG cells inserted for all high/moderate gating opportunity domains
 - [ ] Always-on domains annotated with `/* always-on: <reason> */`
-- [ ] `clock_gating_coverage` ≥ 60% for high-opportunity domains; reported in sign-off record
+- [ ] `clock_gating_coverage` ≥ `design_state.constraints.power.gating_coverage_pct_min`% for high-opportunity domains (default: 60%); reported in sign-off record
 
 ### Output Required
 - RTL file package (all .sv files)
@@ -253,6 +249,21 @@ a fallback.
 - Compile order document
 - Assertion library (.sva files)
 - RTL sign-off record
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`module_planning`) — hard-fail if missing:**
+- `constraints.clock.clk_mhz` — target frequency for synth_check timing evaluation
+
+**Optional (schema defaults apply when absent):**
+- `constraints.timing.fanout_max` (default: 32) — high-fanout threshold
+- `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off target
+- `constraints.power.gating_coverage_pct_min` (default: 60%) — ICG coverage target
+- `constraints.power.activity_factors` (defaults: `{default: 0.15, high: 0.40}`) — domain classification
 
 ---
 

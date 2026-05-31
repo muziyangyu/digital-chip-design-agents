@@ -72,6 +72,7 @@ Each stage must return:
 5. Read `memory/hls/knowledge.md` before the first stage. Write an experience record to `memory/hls/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
 6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `hls_signoff` only): before setting `hls.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"hls_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "hls_signoff", "agent": "hls-orchestrator", "reason": "checkpoint hls_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: latency_cycles, ii_cycles, cosim_match>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `hls.signoff=true`. On re-invocation: if `"hls_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
+8. Constraint validation (at `algorithm_analysis`, skip in fix-request-servicing mode): read `design_state.constraints`. Required: at least one of `hls.target_ii` or `hls.target_latency_cycles` must be non-null. If both are `null`, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "algorithm_analysis", "agent": "hls-orchestrator", "reason": "required constraint hls.target_ii or hls.target_latency_cycles missing from design_state.constraints", "fix_request_id": null, "last_summary": "hls.target_ii, hls.target_latency_cycles", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: ["hls.target_ii", "hls.target_latency_cycles"]`, and halt. For optional absent constraints, use schema defaults. Tag `constraint_ref` when evaluating II/latency QoR (e.g. `"hls.target_ii"`, `"hls.target_latency_cycles"`).
 
 ## Memory
 
@@ -124,7 +125,7 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
+4. Upgrade `format_version` to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; preserve any higher version without downgrade.
 5. Merge your domain fields (below) into the top-level object.
 6. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
 7. Write to `design_state.tmp`, then rename to `design_state.json`.
@@ -154,6 +155,6 @@ History entry to append:
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
-  "constraint_ref": "<constraint name or null>"
+  "constraint_ref": "<dot-path constraint key or null, e.g. hls.target_ii>"
 }
 ```

@@ -100,7 +100,7 @@ integration, and chip-level simulation sign-off.
 ### Domain Rules
 1. Configure each IP per its databook for target use case
 2. Parameterise data widths, FIFO depths, feature enables
-3. Verify configured timing meets target frequency at worst-case corner
+3. Verify configured timing meets `design_state.constraints.clock.clk_mhz` MHz target frequency at worst-case corner
 4. Verify interface widths match bus fabric port requirements
 5. Generate integration wrapper if IP port names differ from system conventions
 
@@ -220,6 +220,20 @@ integration, and chip-level simulation sign-off.
 - Integration sign-off report
 - Final memory map document
 - Integrated SoC RTL package (ready for synthesis)
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`ip_procurement`) — hard-fail if missing:**
+- `constraints.clock.clk_mhz` — target SoC clock frequency; used to verify IP timing at `ip_configuration`
+
+**Optional (schema defaults apply when absent):**
+- `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off threshold for chip-level timing
+- `constraints.area.area_um2` — total SoC area budget (used to cross-check IP area estimates)
+- `constraints.power.power_mw` — SoC power budget
 
 ---
 

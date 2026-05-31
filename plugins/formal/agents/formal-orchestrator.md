@@ -71,6 +71,7 @@ Each stage must return:
 5. Read `memory/formal/knowledge.md` before the first stage. Write an experience record to `memory/formal/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
 6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `formal_signoff` only, **unless** a `fix_request.id` was passed in the prompt — skip the gate in fix-request-servicing mode): before setting `verification_status.formal_signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"formal_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "formal_signoff", "agent": "formal-orchestrator", "reason": "checkpoint formal_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: proved/failed/unknown properties>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `verification_status.formal_signoff=true`. On re-invocation: if `"formal_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
+8. Constraint validation (at `property_planning`, skip in fix-request-servicing mode): read `design_state.constraints`. No required keys for this domain. For absent optional keys, use schema defaults and include a fallback note in the stage `reason`. Tag `constraint_ref` in history entries when evaluating QoR against a constraint value.
 
 ## Memory
 
@@ -113,7 +114,7 @@ Create the file and parent directories if they do not exist.
 
 ### Read (session start)
 After reading `memory/formal/knowledge.md`, read `design_state.json` if it exists.
-Extract: `rtl`, `spec`, `interfaces`, `fix_requests`, `pipeline_session_id`, `pipeline_config`, `approved_checkpoints`.
+Extract: `rtl`, `spec`, `interfaces`, `constraints`, `fix_requests`, `pipeline_session_id`, `pipeline_config`, `approved_checkpoints`.
 If the file does not exist or fields are null, proceed with empty upstream context.
 Do not fail if any key is absent — treat missing keys as null.
 If re-invoked by the pipeline-orchestrator: filter `fix_requests[]` for the current `fix_request.id` (or current `pipeline_session_id`) and, if applicable, the orchestrator identifier (`created_by=formal-orchestrator`). Re-run the failing property on the corrected RTL only for that specific entry. If the property passes, keep that entry's `status` as `fixed` and proceed. If it still fails, create a new `fix_request` entry for the continued failure.
@@ -124,7 +125,7 @@ read-modify-write of `design_state.json`:
 1. Read the file if it exists, or start from `{}`.
 2. Set `design_name` (from your state object) if not already present.
 3. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-4. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
+4. Upgrade `format_version` to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; preserve any higher version without downgrade.
 5. Merge only `verification_status.formal_signoff` — do not overwrite `coverage_pct`,
    `sim_signoff`, or `signoff` set by the verification orchestrator.
 6. If a CEX was found: append a new entry to `fix_requests[]` per the schema below. Set `session_id` to the value of `pipeline_session_id` read from `design_state.json` (null if absent). Never remove, reorder, or overwrite entries created by other agents.
@@ -181,6 +182,6 @@ History entry to append:
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
-  "constraint_ref": "<fix_request.id or null>"
+  "constraint_ref": "<fix_request.id when escalating a CEX; dot-path constraint key when evaluating QoR, e.g. coverage.functional_pct; otherwise null>"
 }
 ```
