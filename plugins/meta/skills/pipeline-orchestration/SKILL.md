@@ -421,7 +421,7 @@ table (evaluated in order):
 | `low` | any | any | `escalate` | Escalate — result unreliable, human review required |
 | `low` | any | any | any (not escalate) | Escalate — low confidence overrides any retry intent |
 | any | `tool_error` | `regenerate` | `retry_stage` | Re-dispatch the same orchestrator once; if still `tool_error`, escalate |
-| any | `drc_lvs` \| `connectivity` | `regenerate` | `loop_back_to:<stage>` | Re-dispatch the generating orchestrator from a clean slate with the error log |
+| any | `drc_lvs` \| `connectivity` | `refine` | `loop_back_to:<stage>` | Re-dispatch the generating orchestrator from a clean slate with the error log |
 | any | `functional` \| `coverage_gap` | `refine` | `escalate` | Append new `fix_request` and loop back via RTL orchestrator |
 | any | `timing` \| `power_area` | `refine` | `loop_back_to:<stage>` | Re-dispatch targeting the violating path/budget with QoR feedback |
 | any | `spec_gap` | `escalate` | `escalate` | Escalate — ambiguous spec; reason states what the user must clarify |
