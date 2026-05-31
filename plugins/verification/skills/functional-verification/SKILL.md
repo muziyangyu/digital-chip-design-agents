@@ -216,13 +216,13 @@ priority:     P0
 ### Coverage Targets
 | Type | Target | Priority |
 |------|--------|----------|
-| Functional (V-plan) | 100% | P0 |
-| Code Line | ≥ 95% | P1 |
-| Code Branch | ≥ 90% | P1 |
-| Code Toggle | ≥ 85% | P2 |
-| FSM State | 100% | P0 |
-| FSM Transition | ≥ 95% | P0 |
-| Assertion triggered | 100% | P1 |
+| Functional (V-plan) | `design_state.constraints.coverage.functional_pct`% (default: 100%) | P0 |
+| Code Line | ≥ `design_state.constraints.coverage.line_pct`% (default: 95%) | P1 |
+| Code Branch | ≥ `design_state.constraints.coverage.branch_pct`% (default: 90%) | P1 |
+| Code Toggle | ≥ `design_state.constraints.coverage.toggle_pct`% (default: 85%) | P2 |
+| FSM State | `design_state.constraints.coverage.fsm_state_pct`% (default: 100%) | P0 |
+| FSM Transition | ≥ `design_state.constraints.coverage.fsm_transition_pct`% (default: 95%) | P0 |
+| Assertion triggered | `design_state.constraints.coverage.assertion_pct`% (default: 100%) | P1 |
 
 ### Closure Strategy
 1. Identify uncovered bins after N random seeds
@@ -283,7 +283,7 @@ priority:     P0
 ### Pass Criteria
 - 0 simulation failures (excluding waived known bugs)
 - 0 UVM FATAL or UVM ERROR messages
-- All coverage targets met
+- All coverage targets met (see `coverage_analysis` targets; driven by `design_state.constraints.coverage.*`)
 - Formal: all P0 properties proven
 - All P0/P1 bugs: closed
 
@@ -292,6 +292,25 @@ priority:     P0
 - Final merged coverage report
 - Open bug list
 - Sign-off checklist
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**No required keys** for functional verification — all constraints in this domain are optional with schema defaults.
+
+**Optional (schema defaults apply when absent):**
+- `constraints.coverage.functional_pct` (default: 100) — functional/V-plan coverage target %
+- `constraints.coverage.line_pct` (default: 95) — code line coverage target %
+- `constraints.coverage.branch_pct` (default: 90) — code branch coverage target %
+- `constraints.coverage.toggle_pct` (default: 85) — toggle coverage target %
+- `constraints.coverage.fsm_state_pct` (default: 100) — FSM state coverage target %
+- `constraints.coverage.fsm_transition_pct` (default: 95) — FSM transition coverage target %
+- `constraints.coverage.assertion_pct` (default: 100) — assertion trigger coverage target %
+
+Tag `constraint_ref` in history entries when evaluating QoR against these values (e.g. `"coverage.functional_pct"`).
 
 ---
 

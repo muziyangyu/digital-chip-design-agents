@@ -219,6 +219,20 @@ assume property (@(posedge clk)
 
 ---
 
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**No required keys** for formal verification — all constraints in this domain are optional.
+
+There are no numeric coverage thresholds unique to formal; this domain shares coverage targets
+with the functional-verification domain (`coverage.*`) and timing targets with the STA domain
+(`timing.wns_ns_target`). When evaluating LEC equivalence or FPV property results, tag
+`constraint_ref` in history entries with the relevant dot-path key if a constraint value was
+consulted (e.g. `"coverage.functional_pct"` when reporting coverage contribution).
+
+---
+
 ## Memory
 
 ### Write on stage completion

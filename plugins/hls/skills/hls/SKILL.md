@@ -128,8 +128,8 @@ and co-simulation to verify RTL matches the golden C model.
 | Balanced | PIPELINE II=1 inner loop + ARRAY_PARTITION |
 
 ### QoR Metrics to Evaluate
-- Achieved II: ≤ target
-- Latency: ≤ target cycles
+- Achieved II: ≤ `design_state.constraints.hls.target_ii` (required; hard-fail if null — see Constraint Validation section)
+- Latency: ≤ `design_state.constraints.hls.target_latency_cycles` cycles (if set)
 - Area: within budget
 - No directive synthesis errors
 
@@ -149,8 +149,8 @@ and co-simulation to verify RTL matches the golden C model.
 5. Verify interface protocols match system integration requirements
 
 ### QoR Metrics to Evaluate
-- II: matches or beats target
-- Latency: within target cycles
+- II: matches or beats `design_state.constraints.hls.target_ii` (required constraint)
+- Latency: within `design_state.constraints.hls.target_latency_cycles` cycles (if set)
 - Area: within budget
 - No latch inference warnings
 
@@ -197,7 +197,7 @@ and co-simulation to verify RTL matches the golden C model.
 
 ### QoR Metrics to Evaluate
 - Co-simulation: 100% output match with C golden model
-- Latency measured: within 5% of HLS report
+- Latency measured: within `design_state.constraints.hls.cosim_tolerance_pct`% of HLS report (default: 5%)
 - II measured: matches HLS report exactly
 - No simulation errors or X propagation
 
@@ -211,10 +211,11 @@ and co-simulation to verify RTL matches the golden C model.
 
 ### Sign-off Checklist
 - [ ] All HLS-hostile patterns resolved
-- [ ] Latency and II targets met in synthesis
+- [ ] Achieved II ≤ `design_state.constraints.hls.target_ii` (required constraint)
+- [ ] Latency ≤ `design_state.constraints.hls.target_latency_cycles` cycles (if set)
 - [ ] Area within budget
 - [ ] RTL QC: lint clean, no latches
-- [ ] Co-simulation: 100% output match
+- [ ] Co-simulation: 100% output match; latency within `design_state.constraints.hls.cosim_tolerance_pct`% (default: 5%)
 - [ ] Interface ports match system integration spec
 
 ### Output Required
@@ -222,6 +223,20 @@ and co-simulation to verify RTL matches the golden C model.
 - Co-simulation pass report
 - HLS QoR report (latency, II, area)
 - Interface documentation
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`algorithm_analysis`) — hard-fail if both are missing/null:**
+- `constraints.hls.target_ii` — target initiation interval (at least one of `target_ii` or `target_latency_cycles` must be non-null)
+- `constraints.hls.target_latency_cycles` — target latency in clock cycles
+
+**Optional (schema defaults apply when absent):**
+- `constraints.hls.cosim_tolerance_pct` (default: 5) — acceptable co-simulation latency deviation %
+- `constraints.clock.clk_mhz` — target clock for synthesis (used if set; otherwise tool default)
 
 ---
 

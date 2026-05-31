@@ -90,6 +90,8 @@ Each stage must return:
 5. Read `memory/architecture/knowledge.md` before the first stage. Write an experience record to `memory/architecture/experiences.jsonl` whenever the flow terminates — including signoff, escalation, max-iterations exceeded, early error, or user interruption. If signoff was not achieved, set `signoff_achieved: false` and populate only the stages that completed.
 6. Per-stage trace: after each stage completes (PASS, FAIL, or WARN), atomically append one `history[]` entry to `design_state.json` using the stage's output `confidence`, `failure_class`, and `suggested_next_step`. Use the 9-field schema shown in the Design State section below. The last entry written is the terminal entry read by downstream orchestrators.
 7. Checkpoint gate (at `arch_signoff` only, unless invoked in fix-request-servicing mode — i.e. a `fix_request.id` was passed in the prompt): before setting `architecture.signoff=true`, read `pipeline_config.checkpoints` and `approved_checkpoints` from `design_state.json`. If `"arch_signoff"` is in `checkpoints` and not in `approved_checkpoints[].stage`: (a) atomic RMW — set `pending_approval = { "type": "checkpoint", "stage": "arch_signoff", "agent": "architecture-orchestrator", "reason": "checkpoint arch_signoff requires human approval before proceeding", "fix_request_id": null, "last_summary": "<QoR one-liner: selected arch, estimated MHz, area>", "requires_user": true }`, (b) append a `history[]` entry with `decision: "await_approval"`, `confidence: "high"`, `failure_class: "none"`, `suggested_next_step: "escalate"`, (c) print the gate message, (d) halt without setting `architecture.signoff=true`. On re-invocation: if `"arch_signoff"` is now in `approved_checkpoints[].stage`, clear `pending_approval` (set null) and proceed.
+8. Constraint extraction (at `spec_analysis`, unless invoked in fix-request-servicing mode): parse the product specification for target clock frequency, area budget, and power budget. Populate `constraints.clock.clk_mhz`, `constraints.area.area_um2`, and `constraints.power.power_mw` from spec values where derivable; leave as `null` when not specified. Write the full constraints object (see Design State section) to `design_state.json` as part of the `spec_analysis` stage write — do not wait for the session-end atomic RMW. This ensures downstream orchestrators can read constraints as soon as architecture completes.
+9. Constraint validation (at `spec_analysis`, skip in fix-request-servicing mode): after extracting constraints from spec, verify `clock.clk_mhz`, `area.area_um2`, and `power.power_mw` are all non-null. If any required key remains `null` after extraction, perform atomic RMW — set `pending_approval = { "type": "constraint_gap", "stage": "spec_analysis", "agent": "architecture-orchestrator", "reason": "required constraint <key> missing from product specification", "fix_request_id": null, "last_summary": "<comma-separated missing keys>", "requires_user": true }`, append a `history[]` entry with `decision: "escalate"`, `failure_class: "spec_gap"`, `suggested_next_step: "escalate"`, `constraint_ref: "<missing key>"`, print the gate message, and halt. Resume path: user adds missing values to `design_state.constraints`, clears `pending_approval`, re-invokes.
 
 ## Memory
 
@@ -147,7 +149,7 @@ read-modify-write of `design_state.json`:
 2. Read the file if it exists, or start from `{}`, and record its version/checksum.
 3. Set `design_name` (from your state object) if not already present.
 4. Set `created_at` (ISO-8601) if not present; set `updated_at` to now.
-5. Upgrade `format_version` to `"1.3"` if absent or currently `"1.0"`, `"1.1"`, or `"1.2"`; preserve any higher version without downgrade.
+5. Upgrade `format_version` to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; preserve any higher version without downgrade.
 6. Merge your domain fields (below) into the top-level object.
 7. Confirm the terminal `history[]` entry for the final stage was written by the per-stage trace (Behaviour Rule 6); if not yet written (abrupt termination), append it now.
 8. Re-check that the version/checksum of `design_state.json` is unchanged; if it changed, retry the read-modify-write loop.
@@ -161,7 +163,24 @@ Domain fields to merge:
 {
   "spec": { "raw": "<user specification verbatim>", "structured": {} },
   "interfaces": [ { "name": "...", "width": null, "role": "..." } ],
-  "constraints": { "clk_mhz": null, "area_um2": null, "power_mw": null },
+  "constraints": {
+    "clock":    { "clk_mhz": null, "clk_uncertainty_ps": null },
+    "pvt_corners": [
+      { "name": "ss_setup", "process": "SS", "voltage_v": null, "temp_c": null, "checks": ["setup"] },
+      { "name": "ff_hold",  "process": "FF", "voltage_v": null, "temp_c": null, "checks": ["hold"] }
+    ],
+    "timing":   { "wns_ns_target": 0, "tns_ns_target": 0, "fanout_max": 32,
+                  "skew_ps_max": 100, "transition_ps_max": 200, "insertion_delay_ps_max": 500 },
+    "area":     { "area_um2": null, "utilization_pct_target": 75, "utilization_pct_max": 85 },
+    "power":    { "power_mw": null, "leakage_pct_max": 15, "ir_drop_pct_max": 5,
+                  "gating_coverage_pct_min": 60, "activity_factors": { "default": 0.15, "high": 0.40 } },
+    "coverage": { "functional_pct": 100, "line_pct": 95, "branch_pct": 90, "toggle_pct": 85,
+                  "fsm_state_pct": 100, "fsm_transition_pct": 95, "assertion_pct": 100 },
+    "dft":      { "saf_coverage_pct": 99, "transition_coverage_pct": 95, "cell_aware_coverage_pct": 95,
+                  "bridging_coverage_pct": 90, "mbist_coverage_pct": 99, "chain_balance_pct": 5 },
+    "hls":      { "target_ii": null, "target_latency_cycles": null, "cosim_tolerance_pct": 5 },
+    "fpga":     { "lut_util_pct_max": 70, "bram_util_pct_max": 80, "dsp_util_pct_max": 80 }
+  },
   "architecture": {
     "selected_candidate": "<name of selected arch>",
     "candidates": [],
@@ -183,6 +202,6 @@ History entry to append:
   "failure_class": "none | functional | timing | power_area | drc_lvs | coverage_gap | connectivity | tool_error | spec_gap | resource_limit",
   "suggested_next_step": "proceed | loop_back_to:<stage> | retry_stage | escalate | abandon",
   "reason": "<one-sentence summary of outcome>",
-  "constraint_ref": "<constraint name or null>"
+  "constraint_ref": "<dot-path constraint key or null, e.g. clock.clk_mhz>"
 }
 ```

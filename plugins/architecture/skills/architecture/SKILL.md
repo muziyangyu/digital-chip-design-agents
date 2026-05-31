@@ -162,12 +162,12 @@ Perform this analysis using the activity factors already collected for dynamic p
 
 1. For each identified clock domain, record its activity factor α derived from the
    use-case workload sweep (gem5 simulation or analytical model).
-2. Classify each domain:
-   - α < 0.15 — **high gating opportunity**: clock gating will save > 30% dynamic power
+2. Classify each domain using thresholds from `design_state.constraints.power.activity_factors` (defaults: `{"default": 0.15, "high": 0.40}`):
+   - α < `activity_factors.default` (default: 0.15) — **high gating opportunity**: clock gating will save > 30% dynamic power
      for that domain; flag as a must-have RTL requirement.
-   - 0.15 ≤ α < 0.40 — **moderate gating opportunity**: clock gating recommended;
+   - `activity_factors.default` ≤ α < `activity_factors.high` (defaults: 0.15–0.40) — **moderate gating opportunity**: clock gating recommended;
      flag as should-have RTL requirement.
-   - α ≥ 0.40 — **always-active**: no gating benefit; document as always-on.
+   - α ≥ `activity_factors.high` (default: 0.40) — **always-active**: no gating benefit; document as always-on.
 3. Produce a `clock_power_budget` table (one row per domain):
 
    | Domain | Frequency | α (activity) | Est. Clock Power (mW) | Gating Class |
@@ -191,10 +191,10 @@ Perform this analysis using the activity factors already collected for dynamic p
 | Cadence Joules RTL | Proprietary | RTL power analysis (optional) |
 
 ### QoR Metrics to Evaluate
-- Area estimate: < 80% of budget
-- Dynamic power: < 80% of budget
-- Leakage: < 15% of total estimated power
-- Clock-gating coverage: ≥ 60% of register-bank bits in high-opportunity domains
+- Area estimate: < 80% of `design_state.constraints.area.area_um2` budget (required constraint — see architecture-orchestrator Behaviour Rule 9)
+- Dynamic power: < 80% of `design_state.constraints.power.power_mw` budget (required constraint)
+- Leakage: < `design_state.constraints.power.leakage_pct_max`% of total estimated power (default: 15%)
+- Clock-gating coverage: ≥ `design_state.constraints.power.gating_coverage_pct_min`% of register-bank bits in high-opportunity domains (default: 60%)
   (measured using planned register-map estimates from the microarchitecture specification;
   mark estimate confidence as HIGH if register counts are frozen, MEDIUM if approximate,
   LOW if based on scaling from similar designs)
@@ -236,7 +236,7 @@ Perform this analysis using the activity factors already collected for dynamic p
 ### Sign-off Checklist
 - [ ] All Must-Have requirements addressed
 - [ ] Performance targets met in model (≥ 10% margin)
-- [ ] Power and area within budget (< 80%)
+- [ ] Power and area within budget (< 80% of `design_state.constraints.area.area_um2` / `power.power_mw`)
 - [ ] All HIGH risks have mitigation plans and owners
 - [ ] Interface specifications complete and agreed
 - [ ] Memory map defined
@@ -246,7 +246,7 @@ Perform this analysis using the activity factors already collected for dynamic p
 - [ ] Verification strategy agreed
 - [ ] RTL coding guidelines documented
 - [ ] `clock_power_budget` table produced; gating class assigned per domain
-- [ ] Clock-gating coverage ≥ 60% of register bits in high-opportunity domains
+- [ ] Clock-gating coverage ≥ `design_state.constraints.power.gating_coverage_pct_min`% of register bits in high-opportunity domains (default: 60%)
 - [ ] Hand-off package complete for RTL team (includes `clock_power_budget` table)
 
 ### Output Required
@@ -254,6 +254,22 @@ Perform this analysis using the activity factors already collected for dynamic p
 - Final trade-off decision record
 - RTL design guidelines
 - Hand-off package
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`spec_analysis`) — hard-fail if missing:**
+- `constraints.clock.clk_mhz` — target frequency
+- `constraints.area.area_um2` — area budget
+- `constraints.power.power_mw` — power budget
+
+**Optional (schema defaults apply when absent):**
+- `constraints.power.leakage_pct_max` (default: 15%) — leakage threshold
+- `constraints.power.gating_coverage_pct_min` (default: 60%) — ICG coverage target
+- `constraints.power.activity_factors` (defaults: `{default: 0.15, high: 0.40}`) — domain classification thresholds
 
 ---
 

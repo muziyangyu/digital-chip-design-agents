@@ -104,7 +104,7 @@ Resume from step: `openlane --from <step_name> <config.json>`
 ## Stage: floorplan
 
 ### Domain Rules
-1. Core utilisation target: 70–80% — leave margin for routing congestion
+1. Core utilisation target: `design_state.constraints.area.utilization_pct_target`% (default: 75%) — leave margin for routing congestion
 2. Macros: place at die edges or corners with halos (typically 5–10 μm)
 3. IO pads: distribute evenly; match package pin assignment
 4. Power grid: VDD/VSS straps every N rows (technology-node specific)
@@ -115,7 +115,7 @@ Resume from step: `openlane --from <step_name> <config.json>`
 ### QoR Metrics to Evaluate
 - Estimated congestion (H and V): flag if > 80%
 - Estimated WNS from floorplan-stage STA: flag if < −2 ns
-- IR drop estimate: flag if > 10% of VDD
+- IR drop estimate: flag if > 2× `design_state.constraints.power.ir_drop_pct_max`% of VDD (default threshold: 10%)
 
 ### Output Required
 - Floorplan DEF (floorplan.def)
@@ -136,8 +136,9 @@ Resume from step: `openlane --from <step_name> <config.json>`
 6. Scan chains: re-order after placement for minimum wirelength
 
 ### QoR Metrics to Evaluate
-- Pre-CTS WNS: > −0.3 ns
+- Pre-CTS WNS: > −0.3 ns (early stage gate; sign-off target is `constraints.timing.wns_ns_target`, default: 0)
 - Cell density hotspots: flag if any region > 90%
+- Max utilisation per partition: `design_state.constraints.area.utilization_pct_max`% (default: 85%); flag if exceeded
 - Estimated routing congestion overflow: flag if > 1%
 
 ### Output Required
@@ -150,16 +151,16 @@ Resume from step: `openlane --from <step_name> <config.json>`
 ## Stage: cts
 
 ### Domain Rules
-1. Target skew: < 100 ps (or per SDC set_clock_uncertainty)
-2. Max transition on clock nets: per technology DRC rule (150–200 ps)
-3. Max fanout per clock buffer: per library (16–32)
+1. Target skew: < `design_state.constraints.timing.skew_ps_max` ps (default: 100 ps, or per SDC set_clock_uncertainty)
+2. Max transition on clock nets: per technology DRC rule (`design_state.constraints.timing.transition_ps_max` ps, default: 200 ps)
+3. Max fanout per clock buffer: per library (`design_state.constraints.timing.fanout_max`, default: 16–32)
 4. Useful skew: only with explicit sign-off approval
 5. Clock gating: integrate into CTS; verify enable pin timing
 6. Multi-clock: handle each domain independently; check CDC after CTS
 
 ### QoR Metrics to Evaluate
-- Global skew per domain: flag if > 150 ps
-- Max insertion delay: flag if > 500 ps
+- Global skew per domain: flag if > 1.5× `design_state.constraints.timing.skew_ps_max` ps (default threshold: 150 ps)
+- Max insertion delay: flag if > `design_state.constraints.timing.insertion_delay_ps_max` ps (default: 500 ps)
 - Post-CTS WNS (setup): flag if < −0.2 ns
 - Post-CTS hold slack: must be ≥ 0 before routing
 
@@ -206,8 +207,8 @@ Resume from step: `openlane --from <step_name> <config.json>`
 7. Apply POCV/AOCV per foundry sign-off agreement
 
 ### QoR Metrics to Evaluate
-- WNS: ≥ 0 all corners
-- TNS: = 0 all corners
+- WNS: ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) all corners
+- TNS: = `design_state.constraints.timing.tns_ns_target` (default: 0) all corners
 - Hold slack: ≥ 0 after fixing
 - ECO cell count: flag if > 2% of total cells
 
@@ -230,10 +231,10 @@ Resume from step: `openlane --from <step_name> <config.json>`
 6. Power gating: verify wakeup/shutdown sequences before routing changes
 
 ### QoR Metrics to Evaluate
-- Total power: within spec budget
-- Leakage: flag if > 15% of total at TT corner
-- IR drop: < 5% VDD across all domains
-- Post-power-opt WNS: must remain ≥ 0
+- Total power: within `design_state.constraints.power.power_mw` budget
+- Leakage: flag if > `design_state.constraints.power.leakage_pct_max`% of total at TT corner (default: 15%)
+- IR drop: < `design_state.constraints.power.ir_drop_pct_max`% VDD across all domains (default: 5%)
+- Post-power-opt WNS: must remain ≥ `design_state.constraints.timing.wns_ns_target` (default: 0)
 
 ### Output Required
 - Power analysis report (dynamic + static, per domain)
@@ -253,8 +254,8 @@ Resume from step: `openlane --from <step_name> <config.json>`
 5. Re-run DRC after any area ECO
 
 ### QoR Metrics to Evaluate
-- Core utilisation: target 70–80%; hard limit 85%
-- WNS: must remain ≥ 0
+- Core utilisation: target `design_state.constraints.area.utilization_pct_target`% (default: 75%); hard limit `design_state.constraints.area.utilization_pct_max`% (default: 85%)
+- WNS: must remain ≥ `design_state.constraints.timing.wns_ns_target` (default: 0)
 - DRC: must remain clean
 
 ### Output Required
@@ -269,13 +270,13 @@ Resume from step: `openlane --from <step_name> <config.json>`
 ### Sign-off Pass Criteria (all must pass)
 | Check | Criterion |
 |-------|-----------|
-| Setup WNS | ≥ 0 all corners |
-| Setup TNS | = 0 all corners |
-| Hold WNS | ≥ 0 all corners |
+| Setup WNS | ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) all corners |
+| Setup TNS | = `design_state.constraints.timing.tns_ns_target` (default: 0) all corners |
+| Hold WNS | ≥ `design_state.constraints.timing.wns_ns_target` (default: 0) all corners |
 | DRC violations | = 0 |
 | LVS errors | = 0 |
 | Antenna violations | = 0 |
-| IR drop | < 5% VDD |
+| IR drop | < `design_state.constraints.power.ir_drop_pct_max`% VDD (default: 5%) |
 | Metal density | Within foundry window |
 
 ### Domain Rules
@@ -296,6 +297,30 @@ Resume from step: `openlane --from <step_name> <config.json>`
 - LVS clean report
 - Final GDS-II
 - Completed tape-out checklist
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`floorplan`) — hard-fail if missing:**
+- `constraints.clock.clk_mhz` — target clock frequency
+- `constraints.area.area_um2` — die area budget
+- `constraints.power.power_mw` — total power budget
+- `constraints.pvt_corners` — at least one entry with non-null `voltage_v` and `temp_c`
+
+**Optional (schema defaults apply when absent):**
+- `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off threshold
+- `constraints.timing.tns_ns_target` (default: 0) — TNS sign-off threshold
+- `constraints.timing.skew_ps_max` (default: 100) — CTS skew target
+- `constraints.timing.transition_ps_max` (default: 200) — clock transition limit
+- `constraints.timing.insertion_delay_ps_max` (default: 500) — max clock insertion delay
+- `constraints.timing.fanout_max` (default: 32) — max clock buffer fanout
+- `constraints.area.utilization_pct_target` (default: 75) — target core utilisation %
+- `constraints.area.utilization_pct_max` (default: 85) — hard utilisation ceiling %
+- `constraints.power.leakage_pct_max` (default: 15) — leakage as % of total power
+- `constraints.power.ir_drop_pct_max` (default: 5) — IR drop limit as % of VDD
 
 ---
 

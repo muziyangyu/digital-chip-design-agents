@@ -81,12 +81,12 @@ When used inside OpenROAD Flow Scripts (ORFS) or LibreLane, the Yosys log appear
 ### Domain Rules
 1. `create_clock`: all primary clocks with period, waveform, source pin, name
 2. `create_generated_clock`: all derived/divided clocks with correct source
-3. `set_clock_uncertainty`: setup = skew + jitter (typically 200–500 ps pre-CTS)
+3. `set_clock_uncertainty`: setup = skew + jitter — use `design_state.constraints.timing.clk_uncertainty_ps` if set; otherwise 200–500 ps pre-CTS (default: see `constraints.timing.clk_uncertainty_ps`, schema default null → use 200–500 ps rule-of-thumb)
 4. `set_input_delay` / `set_output_delay`: all primary IOs constrained
 5. `set_false_path`: multi-clock crossings, test modes, async resets
 6. `set_multicycle_path`: both setup (-setup N) and hold (-hold 1) must be set
 7. `set_dont_touch`: IPs, memory macros, hand-crafted cells
-8. `set_max_fanout`: per library recommendation (typically 32)
+8. `set_max_fanout`: from `design_state.constraints.timing.fanout_max` (default: 32)
 9. `set_max_transition`: per technology DRC rule
 10. Operating conditions: explicitly set (never rely on tool defaults)
 
@@ -145,10 +145,10 @@ When used inside OpenROAD Flow Scripts (ORFS) or LibreLane, the Yosys log appear
 6. Run incremental compile after initial compile to address remaining violations
 
 ### QoR Metrics to Evaluate
-- WNS: ≥ 0 at worst-case corner for sign-off
-- TNS: = 0 for clean sign-off
-- Area: within budget
-- Power: within budget
+- WNS: ≥ `design_state.constraints.timing.wns_ns_target` at worst-case corner for sign-off (default: 0)
+- TNS: = `design_state.constraints.timing.tns_ns_target` for clean sign-off (default: 0)
+- Area: within `design_state.constraints.area.area_um2` budget
+- Power: within `design_state.constraints.power.power_mw` budget
 - No unmapped cells
 
 ### Output Required
@@ -192,10 +192,10 @@ When used inside OpenROAD Flow Scripts (ORFS) or LibreLane, the Yosys log appear
 ## Stage: synthesis_signoff
 
 ### Sign-off Checklist
-- [ ] WNS ≥ 0 at all required corners
-- [ ] TNS = 0
-- [ ] Area within budget
-- [ ] Power within budget
+- [ ] WNS ≥ `design_state.constraints.timing.wns_ns_target` at all required corners (default: 0)
+- [ ] TNS = `design_state.constraints.timing.tns_ns_target` (default: 0)
+- [ ] Area within `design_state.constraints.area.area_um2` budget
+- [ ] Power within `design_state.constraints.power.power_mw` budget
 - [ ] LEC: EQUIVALENT
 - [ ] No black boxes
 - [ ] No combinational loops
@@ -203,6 +203,23 @@ When used inside OpenROAD Flow Scripts (ORFS) or LibreLane, the Yosys log appear
 
 ### Output Required
 - PD handoff package: netlist, SDC, timing reports, area/power reports
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**Required at entry (`constraint_setup`) — hard-fail if missing:**
+- `constraints.clock.clk_mhz` — target clock frequency (drives SDC `create_clock`)
+- `constraints.area.area_um2` — area budget
+- `constraints.power.power_mw` — power budget
+
+**Optional (schema defaults apply when absent):**
+- `constraints.timing.wns_ns_target` (default: 0) — WNS sign-off threshold
+- `constraints.timing.tns_ns_target` (default: 0) — TNS sign-off threshold
+- `constraints.timing.fanout_max` (default: 32) — `set_max_fanout` value
+- `constraints.timing.clk_uncertainty_ps` (default: null → use 200–500 ps rule-of-thumb)
 
 ---
 

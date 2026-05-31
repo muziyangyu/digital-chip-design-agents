@@ -123,10 +123,10 @@ chip meets quality targets (fault coverage and DPPM).
 ### Fault Model Targets
 | Fault Model | Target Coverage |
 |-------------|----------------|
-| Stuck-at (SAF) | ≥ 99% |
-| Transition Delay | ≥ 95% |
-| Cell-Aware | ≥ 95% |
-| Bridging | ≥ 90% |
+| Stuck-at (SAF) | ≥ `design_state.constraints.dft.saf_coverage_pct`% (default: 99%) |
+| Transition Delay | ≥ `design_state.constraints.dft.transition_coverage_pct`% (default: 95%) |
+| Cell-Aware | ≥ `design_state.constraints.dft.cell_aware_coverage_pct`% (default: 95%) |
+| Bridging | ≥ `design_state.constraints.dft.bridging_coverage_pct`% (default: 90%) |
 | Path Delay | Critical paths only |
 
 ### Domain Rules
@@ -138,8 +138,8 @@ chip meets quality targets (fault coverage and DPPM).
 6. Good-machine simulation: run all patterns on RTL or gate sim — 0 failures allowed
 
 ### QoR Metrics to Evaluate
-- SAF coverage: ≥ 99%
-- Transition coverage: ≥ 95%
+- SAF coverage: ≥ `design_state.constraints.dft.saf_coverage_pct`% (default: 99%)
+- Transition coverage: ≥ `design_state.constraints.dft.transition_coverage_pct`% (default: 95%)
 - Pattern count: minimised (ATE time = test cost)
 - Good-machine simulation: 0 failures
 
@@ -166,7 +166,7 @@ chip meets quality targets (fault coverage and DPPM).
 
 ### QoR Metrics to Evaluate
 - MBIST: all memory instances covered
-- MBIST fault coverage: ≥ 99%
+- MBIST fault coverage: ≥ `design_state.constraints.dft.mbist_coverage_pct`% (default: 99%)
 - BIST power: within IR drop budget during test
 - LBIST alias probability: within target (if applicable)
 
@@ -205,10 +205,10 @@ chip meets quality targets (fault coverage and DPPM).
 
 ### Sign-off Checklist
 - [ ] Scan DRC: 0 errors
-- [ ] SAF coverage: ≥ 99% (or agreed target)
-- [ ] Transition coverage: ≥ 95%
+- [ ] SAF coverage: ≥ `design_state.constraints.dft.saf_coverage_pct`% (default: 99%)
+- [ ] Transition coverage: ≥ `design_state.constraints.dft.transition_coverage_pct`% (default: 95%)
 - [ ] Good-machine simulation: 0 failures
-- [ ] MBIST: all memories covered
+- [ ] MBIST: all memories covered; coverage ≥ `design_state.constraints.dft.mbist_coverage_pct`% (default: 99%)
 - [ ] JTAG: BSDL generated and verified
 - [ ] DFT netlist: LEC vs pre-DFT netlist EQUIVALENT
 
@@ -217,6 +217,24 @@ chip meets quality targets (fault coverage and DPPM).
 - Final test pattern files
 - BSDL file
 - DFT netlist (input to PD)
+
+---
+
+## Constraint Validation
+
+See `plugins/meta/skills/pipeline-orchestration/SKILL.md` §Constraints Schema for the authoritative schema and stage-entry validation rule.
+
+**No required keys** for DFT — all constraints in this domain are optional with schema defaults.
+
+**Optional (schema defaults apply when absent):**
+- `constraints.dft.saf_coverage_pct` (default: 99) — stuck-at fault coverage target %
+- `constraints.dft.transition_coverage_pct` (default: 95) — transition delay coverage target %
+- `constraints.dft.cell_aware_coverage_pct` (default: 95) — cell-aware fault coverage target %
+- `constraints.dft.bridging_coverage_pct` (default: 90) — bridging fault coverage target %
+- `constraints.dft.mbist_coverage_pct` (default: 99) — MBIST memory fault coverage target %
+- `constraints.dft.chain_balance_pct` (default: 5) — max chain length deviation %
+
+Tag `constraint_ref` in history entries when evaluating QoR against these values (e.g. `"dft.saf_coverage_pct"`).
 
 ---
 
