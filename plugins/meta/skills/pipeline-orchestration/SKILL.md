@@ -49,6 +49,7 @@ All entries in `design_state.fix_requests[]` must conform to this schema:
   "updated_at": "<ISO-8601>",
   "created_by": "verification-orchestrator | formal-orchestrator",
   "failure_class": "functional | protocol | coverage_gap | formal_cex",
+  "retry_strategy": "refine",
   "test_name": "<directed test or property name>",
   "property_or_assertion": "<assertion id or null>",
   "seed": 0,
@@ -254,6 +255,68 @@ In every `history[]` entry emitted after a stage that evaluates QoR against a co
 Comma-separate if a stage gates on multiple keys. All other history entries retain
 `constraint_ref: null`.
 
+#### Decision tagging via `retry_strategy`
+
+In every `history[]` entry, set `retry_strategy` to the value mapped from the entry's
+`failure_class` per the Failure Classification & Retry Strategy section. Entries with
+`failure_class: "none"` (PASS, `await_approval`) use `retry_strategy: "none"`. This field
+is the strategy label read by the pipeline-orchestrator alongside `confidence` and
+`suggested_next_step`.
+
+### Failure Classification & Retry Strategy
+
+Every failure is categorised so recovery is determined programmatically rather than by
+prose. Two fields work together on each `history[]` entry:
+
+- `failure_class` — *what* went wrong (the existing 10-value enum, unchanged).
+- `retry_strategy` — *how* to recover, derived deterministically from `failure_class`.
+
+`retry_strategy` ∈ `none | regenerate | refine | escalate`:
+
+- **regenerate** — discard the faulty artifact and re-run the *generating* stage from a clean
+  slate using the error log as context (malformed/invalid output: tool crash, DRC/LVS,
+  broken connectivity). Concrete action is typically `retry_stage` or
+  `loop_back_to:<generating stage>`.
+- **refine** — keep the artifact and re-run the stage targeting a *specific* identified defect
+  with detailed feedback (failing test + waveform, timing path, coverage hole, violated
+  interface). Iterative, not from scratch. Action is typically `loop_back_to:<stage>`,
+  usually carrying a `fix_request`.
+- **escalate** — halt and request human input; the result cannot be improved automatically
+  (ambiguous spec) or a budget/cap was hit. Action is `escalate` / `abandon`.
+- **none** — no failure (PASS or `await_approval`); pairs only with `failure_class: "none"`.
+
+`retry_strategy` is the strategy *label*; `suggested_next_step` remains the concrete *action*.
+They are complementary, not redundant.
+
+#### Mapping (authoritative — `failure_class` → default `retry_strategy`)
+
+| `failure_class` | `retry_strategy` | rationale | legacy alias |
+|---|---|---|---|
+| `none` | `none` | no failure | — |
+| `functional` | `refine` | re-run rtl_coding with failing test + waveform | verification_failure |
+| `timing` | `refine` | re-run optimisation targeting failing paths | — |
+| `power_area` | `refine` | re-run targeting the budget overage | — |
+| `coverage_gap` | `refine` | add targeted stimulus to close holes | — |
+| `connectivity` | `refine` | re-run targeting the violated interface/connection | interface_mismatch |
+| `drc_lvs` | `regenerate` | re-run place/route from a clean state | — |
+| `tool_error` | `regenerate` | re-run the same stage from scratch (≡ `retry_stage`) | invalid_rtl |
+| `spec_gap` | `escalate` | ambiguous/missing spec — needs user clarification | incomplete_spec |
+| `resource_limit` | `escalate` | iteration cap / memory exceeded — human decision | — |
+
+The "legacy alias" column reconciles the four classes proposed in an earlier draft
+(`invalid_rtl | verification_failure | interface_mismatch | incomplete_spec`) onto the live
+enum — no separate taxonomy is introduced. Producers that emit a `fix_request`
+(verification, formal) set its `retry_strategy` to `refine` (all their classes map to refine).
+
+#### Actionable escalation guidance
+
+Whenever `retry_strategy` resolves to `escalate` **or** a max-iteration cap is hit, the
+`pending_approval.reason` must state both the `failure_class` and a plain-language
+description of what the user must supply to unblock the flow, e.g.:
+
+- `spec_gap` → "spec_gap: clarify <ambiguous requirement> — provide the intended <behaviour/value>."
+- `resource_limit` → "resource_limit: loop cap (N) reached on <stage> — relax the constraint, raise the cap, or accept current QoR."
+
 ### format_version
 
 `design_state.json` version tiers (each tier is a superset of the previous):
@@ -261,12 +324,14 @@ Comma-separate if a stage gates on multiple keys. All other history entries reta
 - **`"1.2"`**: `history[]` entries carry standardized `confidence`, `failure_class`, and `suggested_next_step` fields.
 - **`"1.3"`**: `pipeline_config.checkpoints`, `approved_checkpoints[]`, `pending_approval.type/stage/agent` present; per-stage `history[]` entries (one entry per completed stage, not just one terminal entry per run).
 - **`"1.4"`**: `constraints` object present (authoritative nested schema defined in the Constraints Schema section); stage-entry constraint validation; `pending_approval.type: "constraint_gap"`.
+- **`"1.5"`**: every `history[]` entry carries `retry_strategy` (`none | regenerate | refine | escalate`), derived from `failure_class` via the mapping in the Failure Classification & Retry Strategy section; escalations include `failure_class` + actionable guidance in `pending_approval.reason`.
 
 All orchestrators must:
-- Upgrade to `"1.4"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`; never downgrade.
-- All prior-version requirements are subsumed by `"1.4"` — no separate upgrades required.
+- Upgrade to `"1.5"` if absent or currently `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`, or `"1.4"`; never downgrade.
+- All prior-version requirements are subsumed by `"1.5"` — no separate upgrades required.
 - Treat missing `fix_requests` or `cross_domain_iteration_count` as `[]` / `0`.
 - Treat missing `confidence`, `failure_class`, or `suggested_next_step` in history entries as `null` for backward compatibility.
+- Treat missing `retry_strategy` in history entries as derivable from `failure_class` via the mapping (`none` ⇒ `none`) for backward compatibility.
 - Treat missing `pipeline_config.checkpoints` as `[]` (no checkpoints — fully autonomous).
 - Treat missing `approved_checkpoints` as `[]`.
 - Treat missing `pending_approval.type` as `"escalation"` for backward compatibility.
@@ -340,8 +405,9 @@ a type-specific message:
 
 Every domain orchestrator appends one `history[]` entry after each internal stage completes
 (PASS, FAIL, WARN), not just at session end. The last entry written is the terminal entry
-read by the pipeline-orchestrator's decision table. Entry shape is unchanged (same 9-field
-schema). This enables post-run audits without replaying the full conversation.
+read by the pipeline-orchestrator's decision table. At format_version 1.5 the entry carries a
+`retry_strategy` field derived from `failure_class` (10-field schema). This enables post-run
+audits without replaying the full conversation.
 
 ### Programmatic branching on standardized history[] fields
 
@@ -349,19 +415,27 @@ After a domain orchestrator completes, the pipeline-orchestrator reads the termi
 `history[]` entry to make retry/escalate decisions without string-parsing prose. Decision
 table (evaluated in order):
 
-| `confidence` | `failure_class` | `suggested_next_step` | Pipeline action |
-|---|---|---|---|
-| any | `resource_limit` | any | Escalate via `pending_approval` — cap exceeded |
-| `low` | any | `escalate` | Escalate — result unreliable, human review required |
-| `low` | any | any (not escalate) | Escalate — low confidence overrides any retry intent |
-| any | `tool_error` | `retry_stage` | Re-dispatch the same orchestrator once; if still `tool_error`, escalate |
-| any | `functional` \| `coverage_gap` | `escalate` | Append new `fix_request` and loop back via RTL orchestrator |
-| `high` \| `medium` | `none` | `proceed` | Advance to next stage / signoff |
-| any | any | `abandon` | Escalate via `pending_approval` — child reports unrecoverable, human decision required |
+| `confidence` | `failure_class` | `retry_strategy` | `suggested_next_step` | Pipeline action |
+|---|---|---|---|---|
+| any | `resource_limit` | `escalate` | any | Escalate via `pending_approval` — cap exceeded |
+| `low` | any | any | `escalate` | Escalate — result unreliable, human review required |
+| `low` | any | any | any (not escalate) | Escalate — low confidence overrides any retry intent |
+| any | `tool_error` | `regenerate` | `retry_stage` | Re-dispatch the same orchestrator once; if still `tool_error`, escalate |
+| any | `drc_lvs` \| `connectivity` | `refine` | `loop_back_to:<stage>` | Re-dispatch the generating orchestrator from a clean slate with the error log |
+| any | `functional` \| `coverage_gap` | `refine` | `escalate` | Append new `fix_request` and loop back via RTL orchestrator |
+| any | `timing` \| `power_area` | `refine` | `loop_back_to:<stage>` | Re-dispatch targeting the violating path/budget with QoR feedback |
+| any | `spec_gap` | `escalate` | `escalate` | Escalate — ambiguous spec; reason states what the user must clarify |
+| `high` \| `medium` | `none` | `none` | `proceed` | Advance to next stage / signoff |
+| any | any | any | `abandon` | Escalate via `pending_approval` — child reports unrecoverable, human decision required |
 
-For any combination not in the table, apply the most conservative matching rule (prefer
-`escalate` over retry). Programmatic branches must read from the history entry's structured
-fields — do not re-derive intent from `reason` (free-text, for humans only).
+`retry_strategy` is the deterministic map of `failure_class` (see the Failure Classification &
+Retry Strategy section) and serves as a coarse pre-filter; `confidence` and
+`suggested_next_step` still refine the final action. Precedence is preserved: `resource_limit`
+and `low` confidence escalate regardless of the mapped strategy. For any combination not in the
+table, apply the most conservative matching rule (prefer `escalate` over retry). When the action
+is an escalation, `pending_approval.reason` must carry the `failure_class` and actionable
+guidance (see Actionable escalation guidance). Programmatic branches must read from the history
+entry's structured fields — do not re-derive intent from `reason` (free-text, for humans only).
 
 ### Dispatch pattern (pipeline-orchestrator)
 

@@ -105,7 +105,7 @@ Key top-level fields:
 - `interfaces` — AXI/protocol interface list (written by architecture)
 - `constraints` — shared timing, area, and power targets (written by architecture)
 - `architecture`, `rtl`, `synthesis`, `sta`, `pd`, ... — per-domain signoff state
-- `history[]` — append-only execution trace; one entry per **stage** (not per run — as of format_version 1.3), each with: `timestamp`, `agent`, `stage`, `decision` (`proceed|escalate|abandoned|await_approval`), `confidence` (`high|medium|low`), `failure_class` (see taxonomy below), `suggested_next_step` (`proceed|loop_back_to:<stage>|retry_stage|escalate|abandon`), `reason`, `constraint_ref`
+- `history[]` — append-only execution trace; one entry per **stage** (not per run — as of format_version 1.3), each with: `timestamp`, `agent`, `stage`, `decision` (`proceed|escalate|abandoned|await_approval`), `confidence` (`high|medium|low`), `failure_class` (see taxonomy below), `retry_strategy` (`none|regenerate|refine|escalate`, mapped from `failure_class`; format_version 1.5+), `suggested_next_step` (`proceed|loop_back_to:<stage>|retry_stage|escalate|abandon`), `reason`, `constraint_ref`
 - `fix_requests[]` — structured RTL fix requests written by verification/formal on DUT bug; consumed by RTL orchestrator and dispatched by pipeline-orchestrator (format_version 1.2+)
 - `cross_domain_iteration_count` — integer count of verification↔RTL feedback cycles driven by pipeline-orchestrator; capped at 3 before escalation
 - `pipeline_config.checkpoints` — list of stage names requiring human approval before the orchestrator may declare signoff (format_version 1.3+). Empty/absent ⇒ fully autonomous. Example: `["arch_signoff", "rtl_signoff", "signoff"]`. Written by user; never overwritten by orchestrators.
@@ -118,6 +118,8 @@ Key top-level fields:
 - `"1.1"` — `fix_requests[]` and `cross_domain_iteration_count` present
 - `"1.2"` — history entries carry standardized `confidence`/`failure_class`/`suggested_next_step`
 - `"1.3"` — `pipeline_config.checkpoints`, `approved_checkpoints[]`, `pending_approval.type/stage/agent`; per-stage history entries (one per stage, not one per run)
+- `"1.4"` — authoritative `constraints` object, stage-entry constraint validation, `pending_approval.type: "constraint_gap"`
+- `"1.5"` — every history entry carries `retry_strategy` (`none|regenerate|refine|escalate`), deterministically mapped from `failure_class`; escalations include `failure_class` + actionable guidance
 
 When `fix_requests[]` contains entries with `status=open`, the chip-design-meta `pipeline-orchestrator` is responsible for routing them to the RTL orchestrator for fixing, then re-running verification.
 

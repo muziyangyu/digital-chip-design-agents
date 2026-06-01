@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased] — feat/structured-failure-handling branch
+
+### Added
+
+- **failure_class → retry_strategy mapping** (FUTURE_WORK item 10): every failure is now categorised into a recovery *strategy* — `regenerate | refine | escalate` — so retry behaviour is determined programmatically rather than by prose. The authoritative mapping is defined once in `plugins/meta/skills/pipeline-orchestration/SKILL.md` under `### Failure Classification & Retry Strategy`, reusing the existing 10-value `failure_class` enum (no new taxonomy). The four classes from the original draft (`invalid_rtl | verification_failure | interface_mismatch | incomplete_spec`) are reconciled as documented aliases.
+  - **`regenerate`** — discard the faulty artifact and re-run the generating stage from a clean slate (`drc_lvs`, `connectivity`, `tool_error`).
+  - **`refine`** — re-run targeting a specific defect with detailed feedback (`functional`, `timing`, `power_area`, `coverage_gap`).
+  - **`escalate`** — halt and request human input (`spec_gap`, `resource_limit`); `none` ⇒ no retry.
+- **`retry_strategy` history-entry field (`format_version "1.5"`)**: every `history[]` entry now carries `retry_strategy`, derived deterministically from `failure_class`. The pipeline-orchestrator decision table gains a `retry_strategy` column and branches on it as a coarse pre-filter (existing `confidence`/`suggested_next_step` precedence preserved; `resource_limit` and `low` confidence still always escalate).
+- **Actionable escalation guidance**: when a strategy resolves to `escalate` or a max-iteration cap is hit, `pending_approval.reason` must state the `failure_class` plus a plain-language description of what the user must supply to unblock the flow.
+- **Updated example fixtures**: `design_state.checkpoint.json` and `design_state.fix_request.json` bumped to `"1.5"` with `retry_strategy` on every history entry; the checkpoint fixture adds an illustrative `timing`/`refine` `synth_check` loop-back entry to exercise the non-`none` path.
+
+### Changed
+
+- **`format_version "1.5"`**: new capability tier covering the `retry_strategy` field and programmatic retry branching. All 14 history-writing orchestrators (the 13 domain orchestrators + infrastructure) upgrade to `"1.5"` on first write — including compiler/firmware/infrastructure, which advance from `"1.3"`; prior-version files remain readable (`retry_strategy` absent → derive from `failure_class`).
+- **All 14 orchestrators + `pipeline-orchestrator.md`**: added `retry_strategy` to the Stage Agent Output Format and `history[]` schema (now 10 fields), updated the per-stage-trace behaviour rule to set and require it, and bumped the format_version upgrade step.
+- **CI** (`validate.yml`): added `"1.5"` to `VALID_FORMAT_VERSIONS`, a `VALID_RETRY_STRATEGY` set and `RETRY_STRATEGY_MAP`, and a `check_retry_strategy` helper that validates each 1.5 history entry's `retry_strategy` against the value **and** its `failure_class` mapping, applied to both example fixtures.
+- **`memory/README.md`**: documented `retry_strategy` in the `history[]` field list and added the `"1.4"` and `"1.5"` format_version tiers.
+
 ## [Unreleased] — feat/infrastructure-memory branch
 
 ### Added
